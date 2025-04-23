@@ -1,0 +1,1 @@
+import os; os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'auth_project.settings'); import django; django.setup(); from django.db import connection; with connection.cursor() as cursor: cursor.execute('SELECT COUNT(*) FROM public_api_dataset_papers'); print(cursor.fetchone()[0])
