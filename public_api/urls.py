@@ -3,7 +3,7 @@ from django.views.generic import RedirectView
 from . import views
 
 public_patterns = [
-    path('test/', views.test_endpoint, name='public-test'),
+    path('research-assistant/', views.research_assistant, name='public-research-assistant'),
     path('papers/', views.papers_list, name='public-papers-list'),
     path('papers/<uuid:paper_id>/', views.paper_detail, name='public-paper-detail'),
     path('papers/by-slug/<str:slug>/', views.paper_by_slug, name='public-paper-by-slug'),

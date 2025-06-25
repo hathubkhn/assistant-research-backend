@@ -8,7 +8,7 @@ django.setup()
 
 # Import models after Django setup
 from django.contrib.auth.models import User
-from users.models import Publication
+from public_api.models import Publication
 
 try:
     # Get or create a test user

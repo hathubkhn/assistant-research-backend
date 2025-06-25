@@ -11,24 +11,25 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
-import os
-from decouple import config, Csv
-import dj_database_url
+from environs import Env
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+env = Env()
+env.read_env()
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config('SECRET_KEY', default="django-insecure-lfa7$(r+vxjd7tq7-q77@bh-619y%n2+fu5(1riq0aww033e8$")
+SECRET_KEY = env.str('SECRET_KEY', default="django-insecure-lfa7$(r+vxjd7tq7-q77@bh-619y%n2+fu5(1riq0aww033e8$")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config('DEBUG', default=True, cast=bool)
+DEBUG = env.bool('DEBUG', default=True)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())
+ALLOWED_HOSTS = env.str('ALLOWED_HOSTS', default='localhost,127.0.0.1,0.0.0.0,202.191.56.91,www.google.com').split(',')
 
 
 # Application definition
@@ -57,8 +58,7 @@ INSTALLED_APPS = [
     'allauth.socialaccount.providers.microsoft',
     
     # Local apps
-    "users",
-    "public_api",  # Public API app
+    "public_api",
 ]
 
 MIDDLEWARE = [
@@ -102,10 +102,15 @@ WSGI_APPLICATION = "auth_project.wsgi.application"
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 # Always use PostgreSQL with Database URL configuration
-DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/research_assistant_db')
-
 DATABASES = {
-    "default": dj_database_url.parse(DATABASE_URL)
+    "default": {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': env.str('POSTGRES_DB'),
+        'USER': env.str('POSTGRES_USER'),
+        'PASSWORD': env.str('POSTGRES_PASSWORD'),
+        'HOST': env.str('POSTGRES_HOST'),
+        'PORT': env.str('POSTGRES_PORT'),
+    }
 }
 
 # No longer need database routers since we're using a single database
@@ -157,13 +162,13 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 APPEND_SLASH = False
 
 # CORS settings
-CORS_ALLOW_ALL_ORIGINS = True  # For development only, set to False in production
+CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",     # Frontend development server
-    "http://127.0.0.1:3000",     # Alternative local address
-    "http://localhost:8000",     # Backend development server
-    "http://127.0.0.1:8000",     # Alternative local address
+    "http://staging-ai-research.hust.edu.vn",
+    "https://staging-ai-research.hust.edu.vn",
+    "http://be-staging-ai-research.hust.edu.vn",
+    "https://be-staging-ai-research.hust.edu.vn",
 ]
 
 # Allow all headers and methods in development
@@ -187,12 +192,6 @@ CORS_ALLOW_METHODS = [
     'PUT',
 ]
 
-# Add CSRF trusted origins
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
-
 # REST Framework settings
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
@@ -200,7 +199,7 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',  # Change to AllowAny for testing
+        'rest_framework.permissions.AllowAny',
     ],
 }
 
@@ -219,8 +218,8 @@ SITE_ID = 1
 SOCIALACCOUNT_PROVIDERS = {
     'google': {
         'APP': {
-            'client_id': config('GOOGLE_CLIENT_ID', default='your-google-client-id'),
-            'secret': config('GOOGLE_CLIENT_SECRET', default='your-google-client-secret'),
+            'client_id': env.str('GOOGLE_CLIENT_ID', default='your-google-client-id'),
+            'secret': env.str('GOOGLE_CLIENT_SECRET', default='your-google-client-secret'),
             'key': ''
         },
         'SCOPE': [
@@ -233,8 +232,8 @@ SOCIALACCOUNT_PROVIDERS = {
     },
     'microsoft': {
         'APP': {
-            'client_id': config('MICROSOFT_CLIENT_ID', default='your-microsoft-client-id'),
-            'secret': config('MICROSOFT_CLIENT_SECRET', default='your-microsoft-client-secret'),
+            'client_id': env.str('MICROSOFT_CLIENT_ID', default='your-microsoft-client-id'),
+            'secret': env.str('MICROSOFT_CLIENT_SECRET', default='your-microsoft-client-secret'),
             'key': '',
             'tenant': 'common',
         },
@@ -254,35 +253,31 @@ ACCOUNT_UNIQUE_EMAIL = True
 ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'https' if not DEBUG else 'http'
 
 # Existing social auth settings
-SOCIAL_AUTH_GOOGLE_OAUTH2_KEY = config('GOOGLE_CLIENT_ID', default='your-google-key')
-SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = config('GOOGLE_CLIENT_SECRET', default='your-google-secret')
+SOCIAL_AUTH_GOOGLE_OAUTH2_KEY = env.str('GOOGLE_CLIENT_ID', default='your-google-key')
+SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = env.str('GOOGLE_CLIENT_SECRET', default='your-google-secret')
 
-SOCIAL_AUTH_MICROSOFT_OAUTH2_KEY = config('MICROSOFT_CLIENT_ID', default='your-microsoft-key')
-SOCIAL_AUTH_MICROSOFT_OAUTH2_SECRET = config('MICROSOFT_CLIENT_SECRET', default='your-microsoft-secret')
+SOCIAL_AUTH_MICROSOFT_OAUTH2_KEY = env.str('MICROSOFT_CLIENT_ID', default='your-microsoft-key')
+SOCIAL_AUTH_MICROSOFT_OAUTH2_SECRET = env.str('MICROSOFT_CLIENT_SECRET', default='your-microsoft-secret')
 
 LOGIN_URL = '/api/login/'
 LOGIN_REDIRECT_URL = '/api/signup/'
 LOGOUT_REDIRECT_URL = '/api/login/'
 
 # Frontend URL for redirects
-FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:3000')
+FRONTEND_URL = env.str('FRONTEND_URL', default='http://localhost:3000')
 
 # API URL for redirects and callbacks
-API_URL = config('API_URL', default='http://localhost:8000')
+API_URL = env.str('API_URL', default='http://localhost:8000')
 
 # Media files configuration
 MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_ROOT = BASE_DIR / 'media'
 
 # Azure OpenAI API configuration
-AZURE_OPENAI_API_KEY = os.environ.get('AZURE_OPENAI_API_KEY', '')
-AZURE_OPENAI_ENDPOINT = os.environ.get('AZURE_OPENAI_ENDPOINT', '')
-AZURE_OPENAI_API_VERSION = os.environ.get('AZURE_OPENAI_API_VERSION', '2023-05-15')
-AZURE_OPENAI_DEPLOYMENT_NAME = os.environ.get('AZURE_OPENAI_DEPLOYMENT_NAME', 'gpt-4')
-
-# Legacy OpenAI API configuration - kept for backwards compatibility
-OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
-OPENAI_MODEL = 'gpt-4'  # You can configure the model you want to use
+AZURE_OPENAI_API_KEY = env.str('AZURE_OPENAI_API_KEY', '')
+AZURE_OPENAI_ENDPOINT = env.str('AZURE_OPENAI_ENDPOINT', '')
+AZURE_OPENAI_API_VERSION = env.str('AZURE_OPENAI_API_VERSION', '2023-05-15')
+AZURE_OPENAI_DEPLOYMENT_NAME = env.str('AZURE_OPENAI_DEPLOYMENT_NAME', 'gpt-4')
 
 # Maximum upload file size (5MB)
 DATA_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
@@ -293,15 +288,14 @@ if DEBUG:
     MIDDLEWARE += ['django.middleware.security.SecurityMiddleware']
     urlpatterns = static(MEDIA_URL, document_root=MEDIA_ROOT)
 
-# Update INSTALLED_APPS to include rest_framework
-# We already have 'rest_framework' and 'rest_framework.authtoken' in INSTALLED_APPS, so commenting this out
-# INSTALLED_APPS += [
-#     'rest_framework',
-#     'rest_framework.authtoken',
-# ]
-
 # CSRF settings for cross-origin requests
-CSRF_COOKIE_SAMESITE = 'Lax'  # Set to 'None' in production with HTTPS
+CSRF_COOKIE_SAMESITE = 'None'  # Required for cross-origin requests in production
+CSRF_COOKIE_SECURE = True  # Only send cookie over HTTPS
 CSRF_COOKIE_HTTPONLY = False  # Must be False to allow JavaScript access
-SESSION_COOKIE_SAMESITE = 'Lax'  # Set to 'None' in production with HTTPS
-CSRF_USE_SESSIONS = False
+SESSION_COOKIE_SAMESITE = 'None'  # Required for cross-origin requests in production 
+SESSION_COOKIE_SECURE = True  # Only send cookie over HTTPS
+CSRF_USE_SESSIONS = True  # Store CSRF token in session for better security
+CSRF_TRUSTED_ORIGINS = [env.str('FRONTEND_URL', default='http://localhost:3000')]
+
+
+PAPER_PDF_DIR='papers'

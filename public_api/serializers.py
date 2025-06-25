@@ -40,4 +40,113 @@ class DatasetSerializer(serializers.ModelSerializer):
 class PublicationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Publication
-        fields = '__all__' 
+        fields = '__all__'
+
+
+### For papers apis
+class PaperListSerializer(serializers.ModelSerializer):
+    year = serializers.SerializerMethodField()
+    downloadUrl = serializers.SerializerMethodField()
+    authors = serializers.SerializerMethodField()
+    venueType = serializers.SerializerMethodField()
+    venue = serializers.SerializerMethodField()
+    impactFactor = serializers.SerializerMethodField()
+    quartile = serializers.SerializerMethodField()
+    keywords = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Paper
+        fields = ['id', 'title', 'authors', 'venue', 'venueType', 
+                  'year', 'keywords', 'abstract', 'downloadUrl',
+                  'impactFactor', 'quartile']
+
+    def get_authors(self, obj):
+        authors_list = obj.authors.values_list('name', flat=True)
+        authors_list = list(authors_list)
+        if len(authors_list) > 0:
+            return authors_list
+        else:
+            return ["Unknown"]
+    
+    def get_downloadUrl(self, obj):
+        return obj.pdf_url
+
+    def get_year(self, obj):
+        return obj.publication_date.year
+    
+    def get_venueType(self, obj):
+        return obj.venue_type
+    
+    def get_venue(self, obj):
+        return obj.venue_name
+
+    def get_impactFactor(self, obj):
+        if obj.venue_type == 'journal' and obj.journal:
+            return obj.journal.impact_factor
+        else:
+            return None
+    
+    def get_quartile(self, obj):
+        if obj.venue_type == 'journal' and obj.journal:
+            return obj.journal.quartile
+        else:
+            return None
+        
+    def get_keywords(self, obj):
+        if obj.keywords:
+            return obj.keywords
+        else:
+            return []
+        
+class PaperDetailSerializer(PaperListSerializer):
+    sourceCode = serializers.SerializerMethodField()
+    citationsByYear = serializers.SerializerMethodField()
+    conferenceRank = serializers.SerializerMethodField()
+    conferenceAbbreviation = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Paper
+        fields = ['id', 'title', 'authors', 'venue', 'venueType', 
+                  'year', 'keywords', 'abstract', 'downloadUrl',
+                  'impactFactor', 'quartile', 'citationsByYear',
+                  'doi', 'method', 'results', 'conclusions', 'bibtex', 
+                  'sourceCode', 'conferenceRank', 'conferenceAbbreviation',
+                  'datasets']
+    
+    def get_citationsByYear(self, obj):
+        return obj.citations_count
+    
+    def get_datasets(self, obj):
+        datasets = obj.datasets.all()
+        datasets_list = []
+        for dataset in datasets:
+            datasets_list.append({
+                "id": dataset.id,
+                "name": dataset.name,
+                "abbreviation": dataset.abbreviation,
+                "description": dataset.description,
+                "data_type": dataset.data_type,
+                "category": dataset.tasks.all().values_list('name', flat=True),
+                "size": dataset.size,
+                "format": dataset.format,
+                "source_url": dataset.source_url,
+                "license": dataset.license,
+            })
+    
+    def get_conferenceRank(self, obj):
+        if obj.venue_type == 'conference' and obj.conference:
+            return obj.conference.rank
+        else:
+            return None
+    
+    def get_conferenceAbbreviation(self, obj):
+        if obj.venue_type == 'conference' and obj.conference:
+            return obj.conference.abbreviation
+        else:
+            return None
+
+    def get_sourceCode(self, obj):
+        if obj.github_url:
+            return obj.github_url
+        else:
+            return None

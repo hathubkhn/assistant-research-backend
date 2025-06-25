@@ -215,7 +215,8 @@ class DatasetSerializer(serializers.ModelSerializer):
         model = Dataset
         fields = ['id', 'name', 'abbreviation', 'description', 'downloadUrl', 
                  'paperCount', 'language', 'category', 'tasks', 'thumbnailUrl', 
-                 'benchmarks', 'created_at', 'updated_at']
+                 'benchmarks', 'link', 'paper_link', 'subtitle', 'dataloaders', 
+                 'similar_datasets', 'papers', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
 
 class ResearchPaperSerializer(serializers.ModelSerializer):

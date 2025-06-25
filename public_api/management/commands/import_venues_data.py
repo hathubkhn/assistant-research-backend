@@ -21,7 +21,7 @@ class Command(BaseCommand):
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
         data_dir = os.path.join(base_dir, 'data')
         journal_file = os.path.join(data_dir, 'scimagojr 2024.csv')
-        conference_file = os.path.join(data_dir, 'era2010_conference_list.xlsx')
+        conference_file = os.path.join(data_dir, 'conference.xlsx')
 
         self.stdout.write(f'Looking for data files in: {data_dir}')
 

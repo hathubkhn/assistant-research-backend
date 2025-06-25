@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth.models import User
 import uuid
+from django.conf import settings
+from django.utils import timezone
 
 class Profile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='public_profile')
@@ -17,8 +19,8 @@ class Profile(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    def __str__(self):
-        return f"{self.user.username}'s Profile"
+    class Meta:
+        db_table = "user_profile"
 
 class Journal(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -31,8 +33,8 @@ class Journal(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    def __str__(self):
-        return self.name
+    class Meta:
+        db_table = "journal"
 
 class Conference(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -44,35 +46,58 @@ class Conference(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    def __str__(self):
-        return self.name
+    class Meta:
+        db_table = "conference"
 
 class Paper(models.Model):
+    FILE_FORMAT_CHOICES = [
+        ('pdf', 'PDF'),
+        ('docx', 'DOCX'),
+        ('doc', 'DOC'),
+        ('txt', 'TXT'),
+        ('html', 'HTML'),
+    ]
+    
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.CharField(max_length=500)
-    authors = models.JSONField(default=list)
     abstract = models.TextField()
-    conference = models.CharField(max_length=255, blank=True)
+    doi = models.CharField(max_length=200, null=True, blank=True)
+    publication_date = models.DateField(null=True, blank=True)
+
     journal = models.ForeignKey(Journal, on_delete=models.SET_NULL, null=True, blank=True, related_name='papers')
-    conference_venue = models.ForeignKey(Conference, on_delete=models.SET_NULL, null=True, blank=True, related_name='papers')
-    year = models.IntegerField()
-    field = models.CharField(max_length=100, blank=True)
+    conference = models.ForeignKey(Conference, on_delete=models.SET_NULL, null=True, blank=True, related_name='papers')
+
+    file_format = models.CharField(max_length=20, choices=FILE_FORMAT_CHOICES, default='pdf')
+    pdf_file = models.FileField(upload_to=settings.PAPER_PDF_DIR, null=True, blank=True)
+    
+    url = models.URLField(max_length=200)
+    pdf_url = models.URLField(max_length=200)
+    github_url = models.URLField(max_length=200, null=True, blank=True)
+    crawled_at = models.DateTimeField(default=timezone.now)
+    
     keywords = models.JSONField(default=list)
-    downloadUrl = models.URLField(blank=True)
-    doi = models.CharField(max_length=100, blank=True)
+
     method = models.TextField(blank=True)
     results = models.TextField(blank=True)
     conclusions = models.TextField(blank=True)
     bibtex = models.TextField(blank=True)
-    sourceCode = models.URLField(blank=True)
+
+    download_count = models.IntegerField(default=0)
+    views_count = models.IntegerField(default=0)
+    citations_count = models.IntegerField(default=0)
+    references = models.ManyToManyField('self', symmetrical=False, related_name='referenced_papers')
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'papers'
 
     @property
     def venue_type(self):
         if self.journal is not None:
             return "journal"
-        elif self.conference_venue is not None:
+        elif self.conference is not None:
             return "conference"
         # Fallback for legacy data
         elif self.conference in Journal.objects.values_list('name', flat=True):
@@ -84,24 +109,23 @@ class Paper(models.Model):
     def venue_name(self):
         if self.journal is not None:
             return self.journal.name
-        elif self.conference_venue is not None:
-            return self.conference_venue.name
+        elif self.conference is not None:
+            return self.conference.name
         else:
             return self.conference
 
-    def __str__(self):
-        return self.title
-
-class PaperCitation(models.Model):
-    paper = models.ForeignKey(Paper, on_delete=models.CASCADE, related_name='citations')
-    year = models.IntegerField()
-    count = models.IntegerField(default=0)
+class Author(models.Model):
+    name = models.CharField(max_length=200)
+    email = models.EmailField(max_length=200)
+    affiliation = models.CharField(max_length=200)
+    bio = models.TextField()
+    google_scholar_url = models.URLField(max_length=200)
+    papers = models.ManyToManyField(Paper, related_name='authors')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
-        unique_together = ('paper', 'year')
-        
-    def __str__(self):
-        return f"{self.paper.title} - {self.year}: {self.count} citations"
+        db_table = 'authors'
 
 class Dataset(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -113,6 +137,17 @@ class Dataset(models.Model):
     source_url = models.URLField(blank=True)
     license = models.CharField(max_length=100, blank=True)
     citation = models.TextField(blank=True)
+    # New fields from JSON
+    link = models.URLField(blank=True)
+    subtitle = models.TextField(blank=True)
+    paper_link = models.URLField(blank=True)
+    thumbnail_url = models.URLField(blank=True)
+    language = models.CharField(max_length=100, blank=True)
+    abbreviation = models.CharField(max_length=100, blank=True)
+    paper_count = models.IntegerField(null=True, blank=True)
+    benchmarks = models.JSONField(default=list, blank=True, null=True)
+    dataloaders = models.JSONField(default=list, blank=True, null=True)
+    dataset_papers = models.JSONField(default=list, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     papers = models.ManyToManyField(Paper, related_name='datasets', blank=True)
@@ -120,6 +155,28 @@ class Dataset(models.Model):
 
     def __str__(self):
         return self.name
+
+class Task(models.Model):
+    name = models.CharField(max_length=200, unique=True)
+    description = models.TextField(blank=True)
+    datasets = models.ManyToManyField(Dataset, related_name='tasks')
+    papers = models.ManyToManyField(Paper, related_name='tasks')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'tasks'
+
+class DatasetSimilarDataset(models.Model):
+    from_dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE, related_name='similar_dataset_relations')
+    to_dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE, related_name='related_by_dataset_relations')
+    
+    class Meta:
+        db_table = 'dataset_similar_datasets'
+        unique_together = ('from_dataset', 'to_dataset')
+        
+    def __str__(self):
+        return f"{self.from_dataset.name} -> {self.to_dataset.name}"
 
 class Publication(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

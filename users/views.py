@@ -356,6 +356,8 @@ class MicrosoftAuthCallbackView(APIView):
     
     Note: This endpoint is not meant to be called directly from Swagger UI.
     It is designed to work with the frontend's OAuth flow.
+    
+    When accessed from a private IP address, device_id and device_name parameters are required.
     """
     permission_classes = [permissions.AllowAny]
     
@@ -366,6 +368,8 @@ class MicrosoftAuthCallbackView(APIView):
         Required fields:
         - code: Authorization code from Microsoft OAuth flow
         - redirect_uri: The redirect URI used in the OAuth flow
+        - device_id: Unique identifier for the device (required for private IP access)
+        - device_name: Name of the device (required for private IP access)
         
         Process:
         1. Exchanges code for access token with Microsoft
@@ -381,8 +385,26 @@ class MicrosoftAuthCallbackView(APIView):
         try:
             code = request.data.get('code')
             redirect_uri = request.data.get('redirect_uri')
+            device_id = request.data.get('device_id')
+            device_name = request.data.get('device_name')
             
-            print(f"Microsoft callback received - code: {code[:10]}... redirect_uri: {redirect_uri}")
+            print(f"Microsoft callback received - code: {code[:10] if code else None}... redirect_uri: {redirect_uri}")
+            
+            # Check if request is coming from a private IP
+            client_ip = request.META.get('REMOTE_ADDR', '')
+            is_private_ip = (
+                client_ip.startswith('10.') or 
+                client_ip.startswith('172.16.') or 
+                client_ip.startswith('192.168.') or
+                client_ip == '127.0.0.1'
+            )
+            
+            # For private IP addresses, device_id and device_name are required
+            if is_private_ip and (not device_id or not device_name):
+                return Response(
+                    {"error": "invalid_request", "error_description": "device_id and device_name are required for private IP access"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             
             if not code or not redirect_uri:
                 return Response(
@@ -502,6 +524,8 @@ class GoogleAuthCallbackView(APIView):
     
     Note: This endpoint is not meant to be called directly from Swagger UI.
     It is designed to work with the frontend's OAuth flow.
+    
+    When accessed from a private IP address, device_id and device_name parameters are required.
     """
     permission_classes = [permissions.AllowAny]
     
@@ -512,6 +536,8 @@ class GoogleAuthCallbackView(APIView):
         Required fields:
         - code: Authorization code from Google OAuth flow
         - redirect_uri: The redirect URI used in the OAuth flow
+        - device_id: Unique identifier for the device (required for private IP access)
+        - device_name: Name of the device (required for private IP access)
         
         Process:
         1. Exchanges code for access token with Google
@@ -527,6 +553,24 @@ class GoogleAuthCallbackView(APIView):
         try:
             code = request.data.get('code')
             redirect_uri = request.data.get('redirect_uri')
+            device_id = request.data.get('device_id')
+            device_name = request.data.get('device_name')
+            
+            # Check if request is coming from a private IP
+            client_ip = request.META.get('REMOTE_ADDR', '')
+            is_private_ip = (
+                client_ip.startswith('10.') or 
+                client_ip.startswith('172.16.') or 
+                client_ip.startswith('192.168.') or
+                client_ip == '127.0.0.1'
+            )
+            
+            # For private IP addresses, device_id and device_name are required
+            if is_private_ip and (not device_id or not device_name):
+                return Response(
+                    {"error": "invalid_request", "error_description": "device_id and device_name are required for private IP access"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             
             if not code or not redirect_uri:
                 return Response(

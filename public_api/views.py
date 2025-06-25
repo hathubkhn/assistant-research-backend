@@ -1,39 +1,31 @@
 import json
 import traceback
 from datetime import datetime, timedelta
-from django.db.models import Q, Count, F, Sum, Avg
+from django.db.models import Q, Sum, Avg
 from django.shortcuts import get_object_or_404
-from django.utils.timezone import now, timezone
-from django.db.models.functions import TruncDay, TruncMonth, TruncYear
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from django.contrib.auth import get_user_model
-from django.http import JsonResponse
 from django.conf import settings
 from django.core.files.base import ContentFile
 import uuid
-from base64 import b64decode
 import random
+import math
 
 from .authentication import AllowAnyAuthentication
-from .models import Paper, Dataset, InterestingPaper, Profile, Publication, PaperCitation, DownloadedPaper, InterestingDataset, Journal, Conference
-from public_api.serializers import ProfileSerializer, PublicationSerializer, PaperSerializer, DatasetSerializer
+from .models import Paper, Dataset, InterestingPaper, Profile, Publication, DownloadedPaper, InterestingDataset, Journal, Conference
+from .serializers import (ProfileSerializer, PublicationSerializer, PaperDetailSerializer, 
+                          PaperSerializer, DatasetSerializer, PaperListSerializer)
 from rest_framework.authtoken.models import Token
+from django.core.paginator import Paginator
 import requests
 import os
 from django.core.files.storage import default_storage
-from users.models import UserProfile
 
 User = get_user_model()
-
-@api_view(['GET'])
-def test_endpoint(request):
-    """
-    Test endpoint to check if the API works
-    """
-    return Response({"message": "Public API is working!"})
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -45,9 +37,6 @@ def papers_list(request):
         # Get query parameters
         year = request.query_params.get('year')
         venue = request.query_params.get('venue')
-        venue_id = request.query_params.get('venue_id')
-        field = request.query_params.get('field')
-        venue_type = request.query_params.get('venueType')
         start_date = request.query_params.get('startDate')
         end_date = request.query_params.get('endDate')
         
@@ -58,147 +47,33 @@ def papers_list(request):
         # Build filter criteria
         filter_criteria = {}
         if year:
-            filter_criteria['year'] = int(year)
+            filter_criteria['publication_date__year'] = int(year)
         if venue:
-            # Now venue can be either in conference field or related to venue models
-            filter_criteria['conference'] = venue
-        if field:
-            filter_criteria['field'] = field
-            
+            filter_criteria['journal_or_conference'] = venue
+
         # Add date filtering if provided
         if start_date:
             try:
                 start_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
-                filter_criteria['created_at__gte'] = start_date
+                filter_criteria['crawled_at__gte'] = start_date
             except ValueError:
                 pass
         if end_date:
             try:
                 end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
-                filter_criteria['created_at__lte'] = end_date
+                filter_criteria['crawled_at__lte'] = end_date
             except ValueError:
                 pass
 
         # Query the database
         papers = Paper.objects.filter(**filter_criteria)
-
-        # Filter by venue type if specified (using the new models)
-        if venue_type:
-            if venue_type == 'journal':
-                papers = papers.filter(Q(journal__isnull=False) | Q(conference__in=Journal.objects.values_list('name', flat=True)))
-            elif venue_type == 'conference':
-                papers = papers.filter(Q(conference_venue__isnull=False) | (~Q(conference__in=Journal.objects.values_list('name', flat=True)) & Q(journal__isnull=True)))
-        
-        # Filter by venue_id if provided
-        if venue_id:
-            # Check both journal and conference_venue
-            papers = papers.filter(Q(journal__id=venue_id) | Q(conference_venue__id=venue_id))
-        
-        # Count total items before pagination
-        total_count = papers.count()
         
         # Apply pagination
-        start_index = (page - 1) * page_size
-        end_index = start_index + page_size
-        paginated_papers = papers[start_index:end_index]
+        paginator = Paginator(papers, page_size)
+        paginated_papers = paginator.page(page)
         
-        result = []
-        
-        for paper in paginated_papers:
-            # Process authors field - ensure it's a list 
-            if not paper.authors or not isinstance(paper.authors, (list, tuple)):
-                try:
-                    if isinstance(paper.authors, str):
-                        if paper.authors.strip():
-                            try:
-                                # Try to parse as JSON
-                                authors = json.loads(paper.authors)
-                            except json.JSONDecodeError:
-                                # If regular string, split by commas
-                                if ',' in paper.authors:
-                                    authors = [name.strip() for name in paper.authors.split(',')]
-                                else:
-                                    authors = [paper.authors]
-                        else:
-                            authors = ["Unknown"]
-                    else:
-                        authors = ["Unknown"]
-                except Exception:
-                    authors = ["Unknown"]
-            else:
-                authors = paper.authors
-                
-            # Ensure authors is not empty
-            if not authors:
-                authors = ["Unknown"]
-                
-            # Process keywords field - ensure it's a list
-            if not paper.keywords or not isinstance(paper.keywords, (list, tuple)):
-                try:
-                    if isinstance(paper.keywords, str):
-                        if paper.keywords.strip():
-                            try:
-                                # Try to parse as JSON
-                                keywords = json.loads(paper.keywords)
-                            except json.JSONDecodeError:
-                                # If regular string, split by commas
-                                if ',' in paper.keywords:
-                                    keywords = [kw.strip() for kw in paper.keywords.split(',')]
-                                else:
-                                    keywords = [paper.keywords]
-                        else:
-                            keywords = []
-                    else:
-                        keywords = []
-                except Exception:
-                    keywords = []
-            else:
-                keywords = paper.keywords
-                
-            # Determine venue type using the model property
-            venue_type = paper.venue_type
-            venue_name = paper.venue_name
-                
-            paper_data = {
-                "id": str(paper.id),
-                "title": paper.title,
-                "authors": authors,
-                "venue": venue_name,
-                "venueType": venue_type,
-                "year": paper.year,
-                "field": paper.field,
-                "keywords": keywords,
-                "abstract": paper.abstract,
-                "downloadUrl": paper.downloadUrl
-            }
-            
-            # Add journal specific information
-            if venue_type == 'journal' and paper.journal:
-                paper_data["impactFactor"] = paper.journal.impact_factor
-                paper_data["quartile"] = paper.journal.quartile
-            elif venue_type == 'journal':
-                # Fallback for legacy data
-                journal_info = {
-                    'IEEE Transactions on Pattern Analysis and Machine Intelligence': {'impactFactor': 24.314, 'quartile': 'Q1'},
-                    'Journal of Machine Learning Research': {'impactFactor': 8.09, 'quartile': 'Q1'},
-                    'IEEE Transactions on Neural Networks and Learning Systems': {'impactFactor': 14.255, 'quartile': 'Q1'},
-                    'Computational Linguistics': {'impactFactor': 6.244, 'quartile': 'Q1'},
-                    'ACM Computing Surveys': {'impactFactor': 14.324, 'quartile': 'Q1'},
-                    'Journal of Artificial Intelligence Research': {'impactFactor': 5.151, 'quartile': 'Q1'},
-                    'International Journal of Computer Vision': {'impactFactor': 13.369, 'quartile': 'Q1'},
-                    'IEEE Transactions on Image Processing': {'impactFactor': 10.856, 'quartile': 'Q1'},
-                    'IEEE Transactions on Knowledge and Data Engineering': {'impactFactor': 8.935, 'quartile': 'Q1'},
-                    'Data Mining and Knowledge Discovery': {'impactFactor': 5.389, 'quartile': 'Q2'},
-                    'ACM Transactions on Database Systems': {'impactFactor': 3.785, 'quartile': 'Q2'},
-                    'The VLDB Journal': {'impactFactor': 4.595, 'quartile': 'Q2'}
-                }
-                
-                if paper.conference in journal_info:
-                    info = journal_info[paper.conference]
-                    paper_data["impactFactor"] = info["impactFactor"]
-                    paper_data["quartile"] = info["quartile"]
-            
-            result.append(paper_data)
+        serializer = PaperListSerializer(paginated_papers, many=True)
+        result = serializer.data
         
         # Create response with pagination metadata
         response_data = {
@@ -206,8 +81,8 @@ def papers_list(request):
             "pagination": {
                 "page": page,
                 "pageSize": page_size,
-                "totalItems": total_count,
-                "totalPages": (total_count + page_size - 1) // page_size
+                "totalItems": paginator.count,
+                "totalPages": paginator.num_pages
             }
         }
             
@@ -370,182 +245,25 @@ def paper_by_slug(request, slug):
     Get a paper by its title slug
     """
     try:
-        # Cải thiện tìm kiếm bằng cách:
-        # 1. Đầu tiên thử tìm chính xác theo ID nếu slug có thể là UUID
-        # 2. Nếu không, thử tìm kiếm title-based với điều kiện AND thay vì OR để chính xác hơn
-        
-        # Kiểm tra xem slug có phải là UUID không
         try:
             paper_id = uuid.UUID(slug)
             paper = Paper.objects.filter(id=paper_id).first()
-            if paper:
-                # Nếu tìm thấy paper bằng ID, trả về ngay
-                pass
-            else:
-                # Nếu slug không phải là UUID hợp lệ hoặc không tìm thấy paper
-                # Tìm kiếm dựa trên title với điều kiện AND
-                title_words = slug.split('-')
-                query = Paper.objects.all()
-                
-                # Lọc paper với điều kiện AND (tất cả các từ phải có trong title)
-                for word in title_words:
-                    if len(word) > 2:  # Bỏ qua các từ quá ngắn (từ nối, giới từ)
-                        query = query.filter(title__icontains=word)
-                
-                paper = query.first()
         except ValueError:
-            # Nếu slug không phải là UUID, tìm kiếm dựa trên title
             title_words = slug.split('-')
-            query = Paper.objects.all()
-            
-            # Lọc paper với điều kiện AND (tất cả các từ phải có trong title)
+            queryset = Paper.objects.all()
+            title_words = [word for word in title_words if len(word) > 2]
             for word in title_words:
-                if len(word) > 2:  # Bỏ qua các từ quá ngắn
-                    query = query.filter(title__icontains=word)
-            
-            paper = query.first()
+                queryset = queryset.filter(title__icontains=word)
+            paper = queryset.first()
         
         if not paper:
             return Response({"error": "Paper not found"}, status=404)
         
-        # Process authors field - ensure it's a list 
-        if not paper.authors or not isinstance(paper.authors, (list, tuple)):
-            try:
-                if isinstance(paper.authors, str):
-                    if paper.authors.strip():
-                        try:
-                            # Try to parse as JSON
-                            authors = json.loads(paper.authors)
-                        except json.JSONDecodeError:
-                            # If regular string, split by commas
-                            if ',' in paper.authors:
-                                authors = [name.strip() for name in paper.authors.split(',')]
-                            else:
-                                authors = [paper.authors]
-                    else:
-                        authors = ["Unknown"]
-                else:
-                    authors = ["Unknown"]
-            except Exception:
-                authors = ["Unknown"]
-        else:
-            authors = paper.authors
-            
-        # Ensure authors is not empty
-        if not authors:
-            authors = ["Unknown"]
-            
-        # Process keywords field - ensure it's a list
-        if not paper.keywords or not isinstance(paper.keywords, (list, tuple)):
-            try:
-                if isinstance(paper.keywords, str):
-                    if paper.keywords.strip():
-                        try:
-                            # Try to parse as JSON
-                            keywords = json.loads(paper.keywords)
-                        except json.JSONDecodeError:
-                            # If regular string, split by commas
-                            if ',' in paper.keywords:
-                                keywords = [kw.strip() for kw in paper.keywords.split(',')]
-                            else:
-                                keywords = [paper.keywords]
-                    else:
-                        keywords = []
-                else:
-                    keywords = []
-            except Exception:
-                keywords = []
-        else:
-            keywords = paper.keywords
-        
-        # Get citation data
-        citations_by_year = list(paper.citations.all().values('year', 'count'))
-        
-        # Get venue name and type from the model properties
-        venue_type = paper.venue_type
-        venue_name = paper.venue_name
-        
-        # Construct the response manually
-        response_data = {
-            "id": str(paper.id),
-            "title": paper.title,
-            "authors": authors,
-            "venue": venue_name,
-            "venueType": venue_type,
-            "year": paper.year,
-            "field": paper.field,
-            "keywords": keywords,
-            "abstract": paper.abstract,
-            "downloadUrl": paper.downloadUrl,
-            "citationsByYear": citations_by_year,
-        }
-        
-        # Add optional fields if they exist
-        if paper.doi:
-            response_data["doi"] = paper.doi
-        if paper.method:
-            response_data["method"] = paper.method
-        if paper.results:
-            response_data["results"] = paper.results
-        if paper.conclusions:
-            response_data["conclusions"] = paper.conclusions
-        if paper.bibtex:
-            response_data["bibtex"] = paper.bibtex
-        if paper.sourceCode:
-            response_data["sourceCode"] = paper.sourceCode
-            
-        # Add journal specific information
-        if venue_type == 'journal' and paper.journal:
-            response_data["impactFactor"] = paper.journal.impact_factor
-            response_data["quartile"] = paper.journal.quartile
-        elif venue_type == 'journal':
-            # Fallback for legacy data
-            journal_info = {
-                'IEEE Transactions on Pattern Analysis and Machine Intelligence': {'impactFactor': 24.314, 'quartile': 'Q1'},
-                'Journal of Machine Learning Research': {'impactFactor': 8.09, 'quartile': 'Q1'},
-                'IEEE Transactions on Neural Networks and Learning Systems': {'impactFactor': 14.255, 'quartile': 'Q1'},
-                'Computational Linguistics': {'impactFactor': 6.244, 'quartile': 'Q1'},
-                'ACM Computing Surveys': {'impactFactor': 14.324, 'quartile': 'Q1'},
-                'Journal of Artificial Intelligence Research': {'impactFactor': 5.151, 'quartile': 'Q1'},
-                'International Journal of Computer Vision': {'impactFactor': 13.369, 'quartile': 'Q1'},
-                'IEEE Transactions on Image Processing': {'impactFactor': 10.856, 'quartile': 'Q1'},
-                'IEEE Transactions on Knowledge and Data Engineering': {'impactFactor': 8.935, 'quartile': 'Q1'},
-                'Data Mining and Knowledge Discovery': {'impactFactor': 5.389, 'quartile': 'Q2'},
-                'ACM Transactions on Database Systems': {'impactFactor': 3.785, 'quartile': 'Q2'},
-                'The VLDB Journal': {'impactFactor': 4.595, 'quartile': 'Q2'}
-            }
-            
-            if paper.conference in journal_info:
-                info = journal_info[paper.conference]
-                response_data["impactFactor"] = info["impactFactor"]
-                response_data["quartile"] = info["quartile"]
-                
-        # Add conference information if available
-        if venue_type == 'conference' and paper.conference_venue:
-            response_data["conferenceRank"] = paper.conference_venue.rank
-            response_data["conferenceAbbreviation"] = paper.conference_venue.abbreviation
-                
-        # Add dataset information
-        if hasattr(paper, 'datasets') and paper.datasets.exists():
-            datasets = []
-            for dataset in paper.datasets.all():
-                datasets.append({
-                    "id": str(dataset.id),
-                    "name": dataset.name,
-                    "abbreviation": dataset.name[:10].upper() if len(dataset.name) > 10 else dataset.name.upper(),
-                    "description": dataset.description,
-                    "data_type": dataset.data_type,
-                    "category": dataset.data_type,
-                    "size": dataset.size,
-                    "format": dataset.format,
-                    "source_url": dataset.source_url,
-                    "license": dataset.license
-                })
-            response_data["datasets"] = datasets
-            
+        serializer = PaperDetailSerializer(paper)
+        response_data = serializer.data     
         return Response(response_data)
     except Exception as e:
-        return Response({"error": str(e), "traceback": traceback.format_exc()}, status=500)
+        return Response({"error": str(e)}, status=500)
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -589,17 +307,59 @@ def datasets_list(request):
         
         result = []
         for dataset in paginated_datasets:
+            # Process tasks properly
+            tasks = []
+            if dataset.tasks:
+                if isinstance(dataset.tasks, list):
+                    tasks = dataset.tasks
+                elif isinstance(dataset.tasks, str):
+                    try:
+                        tasks = json.loads(dataset.tasks)
+                    except:
+                        tasks = [dataset.tasks]
+            
+            # Process benchmarks properly
+            benchmarks = []
+            if dataset.benchmarks:
+                if isinstance(dataset.benchmarks, list):
+                    benchmarks = dataset.benchmarks
+                elif isinstance(dataset.benchmarks, int):
+                    benchmarks = [{"placeholder": True} for _ in range(dataset.benchmarks)]
+                elif isinstance(dataset.benchmarks, str):
+                    try:
+                        benchmarks = json.loads(dataset.benchmarks)
+                    except:
+                        # If it's a number in string format
+                        try:
+                            benchmark_count = int(dataset.benchmarks)
+                            benchmarks = [{"placeholder": True} for _ in range(benchmark_count)]
+                        except:
+                            benchmarks = []
+            
+            # Generate proper abbreviation
+            abbreviation = dataset.abbreviation
+            if not abbreviation or abbreviation == dataset.name:
+                if len(dataset.name.split()) > 1:
+                    # Try to create abbreviation from first letters of words
+                    words = dataset.name.split()
+                    abbreviation = ''.join(word[0] for word in words if word[0].isalpha()).upper()
+                else:
+                    abbreviation = dataset.name[:5].upper()
+            
+            # Get the actual count of related papers from the ManyToMany relationship
+            paper_count = dataset.papers.count()
+            
             dataset_data = {
                 "id": str(dataset.id),
                 "name": dataset.name,
-                "abbreviation": dataset.name[:10] if len(dataset.name) > 10 else dataset.name,  # Generate abbreviation if needed
+                "abbreviation": abbreviation,
                 "description": dataset.description,
                 "downloadUrl": dataset.source_url,
-                "language": "English",  # Default value
+                "language": dataset.language if dataset.language else "English",
                 "category": dataset.data_type or "Unknown",
-                "tasks": [],  # Default empty list
-                "paperCount": dataset.papers.count(),
-                "benchmarks": 0  # Default value
+                "tasks": tasks,
+                "paperCount": paper_count,
+                "benchmarks": benchmarks
             }
                 
             result.append(dataset_data)
@@ -628,62 +388,149 @@ def dataset_detail(request, dataset_id):
     try:
         # Use Dataset model from public_api.models
         dataset = get_object_or_404(Dataset, id=dataset_id)
+        
+        # Process tasks properly
+        tasks = []
+        if dataset.tasks:
+            if isinstance(dataset.tasks, list):
+                tasks = dataset.tasks
+            elif isinstance(dataset.tasks, str):
+                try:
+                    tasks = json.loads(dataset.tasks)
+                except:
+                    tasks = [dataset.tasks]
+        
+        # Process benchmarks properly
+        benchmarks = []
+        if dataset.benchmarks:
+            if isinstance(dataset.benchmarks, list):
+                benchmarks = dataset.benchmarks
+            elif isinstance(dataset.benchmarks, int):
+                benchmarks = [{"placeholder": True} for _ in range(dataset.benchmarks)]
+            elif isinstance(dataset.benchmarks, str):
+                try:
+                    benchmarks = json.loads(dataset.benchmarks)
+                except:
+                    # If it's a number in string format
+                    try:
+                        benchmark_count = int(dataset.benchmarks)
+                        benchmarks = [{"placeholder": True} for _ in range(benchmark_count)]
+                    except:
+                        benchmarks = []
+        
+        # Generate proper abbreviation
+        abbreviation = dataset.abbreviation
+        if not abbreviation or abbreviation == dataset.name:
+            if len(dataset.name.split()) > 1:
+                # Try to create abbreviation from first letters of words
+                words = dataset.name.split()
+                abbreviation = ''.join(word[0] for word in words if word[0].isalpha()).upper()
+            else:
+                abbreviation = dataset.name[:5].upper()
             
         dataset_data = {
             "id": str(dataset.id),
             "name": dataset.name,
-            "abbreviation": dataset.name[:10] if len(dataset.name) > 10 else dataset.name,  # Generate abbreviation
+            "abbreviation": abbreviation,
             "description": dataset.description,
             "downloadUrl": dataset.source_url,
-            "language": "English",  # Default value
+            "language": dataset.language if dataset.language else "English",
             "category": dataset.data_type or "Unknown",
-            "tasks": [],  # Default empty list
+            "tasks": tasks,
             "paperCount": dataset.papers.count(),
-            "benchmarks": 0  # Default value
+            "benchmarks": benchmarks,
+            "link": dataset.link if dataset.link else None,
+            "paper_link": dataset.paper_link if dataset.paper_link else None,
+            "subtitle": dataset.subtitle if dataset.subtitle else None,
+            "thumbnailUrl": dataset.thumbnailUrl if dataset.thumbnailUrl else None,
+            "dataloaders": dataset.dataloaders if dataset.dataloaders else [],
+            "created_at": dataset.created_at.isoformat() if dataset.created_at else None,
+            "updated_at": dataset.updated_at.isoformat() if dataset.updated_at else None,
+            "isStarred": False  # Default value, will update below if user is authenticated
         }
             
-        # Get related papers
+        # Check if the dataset is starred by the current user
+        if request.user.is_authenticated:
+            try:
+                is_starred = InterestingDataset.objects.filter(user=request.user, dataset=dataset).exists()
+                dataset_data["isStarred"] = is_starred
+            except Exception as e:
+                print(f"Error checking if dataset is starred: {str(e)}")
+            
+        # Get related papers from the many-to-many relationship
         related_papers = []
-        if hasattr(dataset, 'papers') and dataset.papers.exists():
-            for paper in dataset.papers.all():
+        if hasattr(dataset, 'papers'):
+            papers = dataset.papers.all().order_by('-year')
+            for paper in papers:
+                # Extract and parse author data safely
                 try:
-                    authors = json.loads(paper.authors) if paper.authors else ["Unknown"]
-                except:
+                    authors = paper.authors
+                    if isinstance(authors, str):
+                        try:
+                            authors = json.loads(authors)
+                        except:
+                            authors = [authors]
+                except Exception as e:
                     authors = ["Unknown"]
                     
+                # Extract and parse keywords safely
                 try:
-                    keywords = json.loads(paper.keywords) if paper.keywords else []
-                except:
+                    keywords = paper.keywords
+                    if isinstance(keywords, str):
+                        try:
+                            keywords = json.loads(keywords)
+                        except:
+                            keywords = []
+                except Exception as e:
                     keywords = []
-                    
+                
+                # Get venue information
+                venue_type = paper.venue_type if hasattr(paper, 'venue_type') else "conference"
+                venue_name = paper.venue_name if hasattr(paper, 'venue_name') else paper.conference
+                
+                # Build paper data with more detailed information
                 paper_data = {
                     "id": str(paper.id),
                     "title": paper.title,
                     "authors": authors,
-                    "conference": paper.conference,
+                    "abstract": paper.abstract,
+                    "conference": venue_name,
                     "year": paper.year,
-                    "field": paper.field
+                    "field": paper.field,
+                    "venue_type": venue_type,
+                    "keywords": keywords,
+                    "downloadUrl": paper.downloadUrl if paper.downloadUrl else None,
+                    "doi": paper.doi if paper.doi else None
                 }
                 
                 related_papers.append(paper_data)
         
-        # Get similar datasets
+        # Get similar datasets from the DatasetSimilarDataset model
         similar_datasets = []
-        if hasattr(dataset, 'similar_datasets') and dataset.similar_datasets.exists():
-            for similar in dataset.similar_datasets.all():
-                similar_data = {
-                    "id": str(similar.id),
-                    "name": similar.name,
-                    "abbreviation": similar.name[:10] if len(similar.name) > 10 else similar.name,
-                    "description": similar.description,
-                    "downloadUrl": similar.source_url,
-                    "language": "English",
-                    "category": similar.data_type or "Unknown",
-                    "tasks": [],
-                    "paperCount": similar.papers.count(),
-                    "benchmarks": 0
-                }
-                similar_datasets.append(similar_data)
+        
+        # Get similar datasets from the DatasetSimilarDataset relation table
+        from public_api.models import DatasetSimilarDataset
+        similar_relations = DatasetSimilarDataset.objects.filter(from_dataset=dataset)
+        
+        for relation in similar_relations:
+            similar = relation.to_dataset
+            
+            # Get the actual count of related papers from the ManyToMany relationship
+            similar_paper_count = similar.papers.count()
+            
+            similar_data = {
+                "id": str(similar.id),
+                "name": similar.name,
+                "abbreviation": similar.abbreviation if similar.abbreviation else similar.name[:10],
+                "description": similar.description,
+                "downloadUrl": similar.source_url,
+                "language": similar.language if similar.language else "English",
+                "category": similar.data_type or "Unknown",
+                "tasks": similar.tasks if similar.tasks else [],
+                "paperCount": similar_paper_count,
+                "benchmarks": similar.benchmarks if similar.benchmarks else []
+            }
+            similar_datasets.append(similar_data)
                 
         # Structure the complete response
         result = {
@@ -694,7 +541,7 @@ def dataset_detail(request, dataset_id):
             
         return Response(result)
     except Exception as e:
-        return Response({"error": str(e)}, status=500)
+        return Response({"error": str(e), "traceback": traceback.format_exc()}, status=500)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -855,111 +702,61 @@ def search(request):
     except Exception as e:
         return Response({"error": str(e)}, status=500)
 
-@api_view(['GET'])
+@api_view(['GET', 'PUT'])
 @permission_classes([IsAuthenticated])
 def get_profile(request):
     """
-    Get the profile of the authenticated user
+    Get or update the profile of the authenticated user
     """
     try:
-        user = request.user
+        # Get the user profile from the public_api Profile model
+        profile, created = Profile.objects.get_or_create(user=request.user)
         
-        # Import necessary models
-        from django.contrib.auth.models import User
-        from users.models import UserProfile
+        if request.method == 'GET':
+            serializer = ProfileSerializer(profile)
+            # Get the serialized profile data
+            data = serializer.data
+            
+            # Fetch and add the user's publications to the response
+            user_publications = Publication.objects.filter(user=request.user)
+            publications_serializer = PublicationSerializer(user_publications, many=True)
+            data['publications'] = publications_serializer.data
+            
+            # Convert research_interests to keywords for backward compatibility
+            if 'research_interests' in data and 'keywords' not in data:
+                data['keywords'] = data['research_interests']
+            
+            return Response(data)
         
-        # First ensure UserProfile exists
-        user_profile, created = UserProfile.objects.get_or_create(
-            user=user,
-            defaults={
-                'full_name': user.get_full_name() or user.username,
-                'faculty_institute': '',
-                'position': '',
-                'bio': '',
-                'research_interests': '',
-                'is_profile_completed': False
-            }
-        )
-        
-        # Then get or create the public API Profile
-        profile, created = Profile.objects.get_or_create(
-            user=user,
-            defaults={
-                'full_name': user_profile.full_name or user.get_full_name() or user.username,
-                'faculty_institute': user_profile.faculty_institute or '',
-                'school': user_profile.school or '',
-                'position': user_profile.position or '',
-                'google_scholar_link': user_profile.google_scholar_link or '',
-                'bio': user_profile.bio or '',
-                'research_interests': user_profile.research_interests or '',
-                'additional_keywords': user_profile.additional_keywords or '',
-                'avatar_url': user_profile.avatar_url or '',
-                'is_profile_completed': user_profile.is_profile_completed
-            }
-        )
-        
-        # If profile already existed, update it with UserProfile data
-        if not created:
-            update_fields = False
+        elif request.method == 'PUT':
+            # Use serializer to update the profile
+            serializer = ProfileSerializer(profile, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                
+                # Mark profile as completed if required fields are filled
+                if not profile.is_profile_completed:
+                    required_fields = ['full_name', 'faculty_institute', 'position', 'research_interests']
+                    is_complete = all(getattr(profile, field, None) for field in required_fields)
+                    if is_complete:
+                        profile.is_profile_completed = True
+                        profile.save()
+                
+                # Get updated data with publications
+                updated_data = serializer.data
+                user_publications = Publication.objects.filter(user=request.user)
+                publications_serializer = PublicationSerializer(user_publications, many=True)
+                updated_data['publications'] = publications_serializer.data
+                
+                # Convert research_interests to keywords for backward compatibility
+                if 'research_interests' in updated_data and 'keywords' not in updated_data:
+                    updated_data['keywords'] = updated_data['research_interests']
+                
+                return Response(updated_data)
+            return Response(serializer.errors, status=400)
             
-            if user_profile.full_name and profile.full_name != user_profile.full_name:
-                profile.full_name = user_profile.full_name
-                update_fields = True
-            
-            if user_profile.faculty_institute and profile.faculty_institute != user_profile.faculty_institute:
-                profile.faculty_institute = user_profile.faculty_institute
-                update_fields = True
-            
-            if user_profile.school and profile.school != user_profile.school:
-                profile.school = user_profile.school
-                update_fields = True
-            
-            if user_profile.position and profile.position != user_profile.position:
-                profile.position = user_profile.position
-                update_fields = True
-            
-            if user_profile.google_scholar_link and profile.google_scholar_link != user_profile.google_scholar_link:
-                profile.google_scholar_link = user_profile.google_scholar_link
-                update_fields = True
-            
-            if user_profile.bio and profile.bio != user_profile.bio:
-                profile.bio = user_profile.bio
-                update_fields = True
-            
-            if user_profile.research_interests and profile.research_interests != user_profile.research_interests:
-                profile.research_interests = user_profile.research_interests
-                update_fields = True
-            
-            if user_profile.additional_keywords and profile.additional_keywords != user_profile.additional_keywords:
-                profile.additional_keywords = user_profile.additional_keywords
-                update_fields = True
-            
-            if user_profile.avatar_url and profile.avatar_url != user_profile.avatar_url:
-                profile.avatar_url = user_profile.avatar_url
-                update_fields = True
-            
-            if profile.is_profile_completed != user_profile.is_profile_completed:
-                profile.is_profile_completed = user_profile.is_profile_completed
-                update_fields = True
-            
-            if update_fields:
-                profile.save()
-        
-        serializer = ProfileSerializer(profile)
-        
-        # Add 'keywords' field to response with value from research_interests for frontend compatibility
-        response_data = serializer.data
-        if 'research_interests' in response_data:
-            response_data['keywords'] = response_data['research_interests']
-        
-        # Get publications and add them to the response data
-        user_publications = Publication.objects.filter(user=user).order_by('-year')
-        publications_serializer = PublicationSerializer(user_publications, many=True)
-        response_data['publications'] = publications_serializer.data
-        
-        return Response(response_data)
     except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({"error": str(e)}, status=500)
 
 @api_view(['PUT', 'PATCH'])
 @permission_classes([IsAuthenticated])
@@ -968,107 +765,36 @@ def update_profile(request):
     Update the profile of the authenticated user
     """
     try:
-        user = request.user
-        try:
-            profile = Profile.objects.get(user=user)
+        # Get public_api Profile
+        profile, created = Profile.objects.get_or_create(user=request.user)
+        
+        # Use serializer to update the profile
+        serializer = ProfileSerializer(profile, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
             
-            # Map 'keywords' from request data to 'research_interests' field
-            request_data = request.data.copy()
-            if 'keywords' in request_data and 'research_interests' not in request_data:
-                request_data['research_interests'] = request_data['keywords']
+            # Mark profile as completed if required fields are filled
+            if not profile.is_profile_completed:
+                required_fields = ['full_name', 'faculty_institute', 'position', 'research_interests']
+                is_complete = all(getattr(profile, field, None) for field in required_fields)
+                if is_complete:
+                    profile.is_profile_completed = True
+                    profile.save()
             
-            serializer = ProfileSerializer(profile, data=request_data, partial=True)
-            if serializer.is_valid():
-                updated_profile = serializer.save()
-                
-                # Ensure UserProfile exists and sync changes to it
-                from django.contrib.auth.models import User
-                from users.models import UserProfile
-                
-                # Force create UserProfile if it doesn't exist
-                user_profile, created = UserProfile.objects.get_or_create(
-                    user=user,
-                    defaults={
-                        'full_name': updated_profile.full_name,
-                        'faculty_institute': updated_profile.faculty_institute,
-                        'school': updated_profile.school,
-                        'position': updated_profile.position,
-                        'google_scholar_link': updated_profile.google_scholar_link,
-                        'bio': updated_profile.bio,
-                        'research_interests': updated_profile.research_interests,
-                        'additional_keywords': updated_profile.additional_keywords,
-                        'avatar_url': updated_profile.avatar_url,
-                        'is_profile_completed': updated_profile.is_profile_completed
-                    }
-                )
-                
-                # Update the existing UserProfile with new data
-                if not created:
-                    has_changes = False
-                    
-                    # Map fields from Profile to UserProfile
-                    if 'full_name' in request.data and updated_profile.full_name:
-                        user_profile.full_name = updated_profile.full_name
-                        has_changes = True
-                    
-                    if 'faculty_institute' in request.data and updated_profile.faculty_institute:
-                        user_profile.faculty_institute = updated_profile.faculty_institute
-                        has_changes = True
-                    
-                    if 'school' in request.data and updated_profile.school:
-                        user_profile.school = updated_profile.school
-                        has_changes = True
-                    
-                    if 'position' in request.data and updated_profile.position:
-                        user_profile.position = updated_profile.position
-                        has_changes = True
-                    
-                    if 'google_scholar_link' in request.data and updated_profile.google_scholar_link:
-                        user_profile.google_scholar_link = updated_profile.google_scholar_link
-                        has_changes = True
-                    
-                    if 'bio' in request.data and updated_profile.bio:
-                        user_profile.bio = updated_profile.bio
-                        has_changes = True
-                    
-                    if 'research_interests' in request.data and updated_profile.research_interests:
-                        user_profile.research_interests = updated_profile.research_interests
-                        has_changes = True
-                        
-                    if 'additional_keywords' in request.data and updated_profile.additional_keywords:
-                        user_profile.additional_keywords = updated_profile.additional_keywords
-                        has_changes = True
-                        
-                    if 'avatar_url' in request.data and updated_profile.avatar_url:
-                        user_profile.avatar_url = updated_profile.avatar_url
-                        has_changes = True
-                        
-                    if 'is_profile_completed' in request.data:
-                        user_profile.is_profile_completed = updated_profile.is_profile_completed
-                        has_changes = True
-                    
-                    if has_changes:
-                        user_profile.save()
-                
-                # Prepare response
-                response_data = serializer.data
-                
-                # Add 'keywords' field for backward compatibility
-                if 'research_interests' in response_data:
-                    response_data['keywords'] = response_data['research_interests']
-                
-                # Get publications and add them to the response data
-                user_publications = Publication.objects.filter(user=user).order_by('-year')
-                publications_serializer = PublicationSerializer(user_publications, many=True)
-                response_data['publications'] = publications_serializer.data
-                
-                return Response(response_data)
-            else:
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        except Profile.DoesNotExist:
-            return Response({"error": "Profile not found"}, status=status.HTTP_404_NOT_FOUND)
+            # Get updated data with publications
+            updated_data = serializer.data
+            user_publications = Publication.objects.filter(user=request.user)
+            publications_serializer = PublicationSerializer(user_publications, many=True)
+            updated_data['publications'] = publications_serializer.data
+            
+            # Convert research_interests to keywords for backward compatibility
+            if 'research_interests' in updated_data and 'keywords' not in updated_data:
+                updated_data['keywords'] = updated_data['research_interests']
+            
+            return Response(updated_data)
+        return Response(serializer.errors, status=400)
     except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({"error": str(e)}, status=500)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -1636,67 +1362,43 @@ def register(request):
     Register a new user
     """
     try:
-        data = request.data
+        username = request.data.get('username')
+        email = request.data.get('email')
+        password = request.data.get('password')
         
-        # Check if username exists
-        if User.objects.filter(username=data.get('username')).exists():
-            return Response({"username": ["This username is already taken."]}, status=status.HTTP_400_BAD_REQUEST)
+        # Check if required fields are provided
+        if not username or not email or not password:
+            return Response({"error": "Username, email, and password are required"}, status=400)
         
-        # Check if email exists
-        if User.objects.filter(email=data.get('email')).exists():
-            return Response({"email": ["This email is already registered."]}, status=status.HTTP_400_BAD_REQUEST)
+        # Check if user with the given username or email already exists
+        if User.objects.filter(username=username).exists():
+            return Response({"error": "Username already exists"}, status=400)
+        if User.objects.filter(email=email).exists():
+            return Response({"error": "Email already exists"}, status=400)
         
-        # Create user - using only fields from auth_user table
+        # Create the user
         user = User.objects.create_user(
-            username=data.get('username'),
-            email=data.get('email'),
-            password=data.get('password'),
-            first_name=data.get('first_name', ''),
-            last_name=data.get('last_name', '')
+            username=username,
+            email=email,
+            password=password
         )
         
-        # Create profile - We have two profile models, ensure both are updated
-        # First, update UserProfile from users app
-        profile, created = UserProfile.objects.get_or_create(
-            user=user,
-            defaults={
-                'full_name': data.get('full_name', ''),
-                'faculty_institute': data.get('faculty_institute', ''),
-                'school': data.get('school', ''),
-                'position': data.get('position', ''),
-                'research_interests': data.get('keywords', ''),
-                'additional_keywords': data.get('additional_keywords', ''),
-                'google_scholar_link': data.get('google_scholar_link', ''),
-                'bio': data.get('bio', '')
-            }
-        )
+        # Create profile for the user (will be automatically created by signals)
+        profile = Profile.objects.get_or_create(user=user)[0]
         
-        # Then, update Profile from public_api app
-        public_profile, created = Profile.objects.get_or_create(
-            user=user,
-            defaults={
-                'full_name': data.get('full_name', ''),
-                'faculty_institute': data.get('faculty_institute', ''),
-                'school': data.get('school', ''),
-                'position': data.get('position', ''),
-                'google_scholar_link': data.get('google_scholar_link', ''),
-                'bio': data.get('bio', ''),
-                'research_interests': data.get('keywords', ''),
-                'additional_keywords': data.get('additional_keywords', '')
-            }
-        )
-        
-        # Generate token
+        # Generate token for the user
         token, _ = Token.objects.get_or_create(user=user)
         
+        # Return success message and token
         return Response({
+            "message": "User registered successfully",
             "token": token.key,
-            "user_id": user.id,
+            "userId": user.id,
             "username": user.username,
             "email": user.email
-        }, status=status.HTTP_201_CREATED)
+        })
     except Exception as e:
-        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"error": str(e)}, status=500)
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -1738,18 +1440,38 @@ def token_login(request):
 def google_callback(request):
     """
     Handle Google OAuth callback
+    
+    When accessed from a private IP address, device_id and device_name parameters are required.
     """
     try:
         code = request.data.get('code')
         redirect_uri = request.data.get('redirect_uri')
+        device_id = request.data.get('device_id')
+        device_name = request.data.get('device_name')
+        
+        # Check if request is coming from a private IP
+        client_ip = request.META.get('REMOTE_ADDR', '')
+        is_private_ip = (
+            client_ip.startswith('10.') or 
+            client_ip.startswith('172.16.') or 
+            client_ip.startswith('192.168.') or
+            client_ip == '127.0.0.1'
+        )
+        
+        # For private IP addresses, device_id and device_name are required
+        if is_private_ip and (not device_id or not device_name):
+            return Response(
+                {"error": "invalid_request", "error_description": "device_id and device_name are required for private IP access"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         if not code:
             return Response({"detail": "Authorization code is required"}, status=status.HTTP_400_BAD_REQUEST)
         
         # Exchange code for token (this is a simplified example)
         token_url = "https://oauth2.googleapis.com/token"
-        client_id = os.environ.get('GOOGLE_CLIENT_ID', '')
-        client_secret = os.environ.get('GOOGLE_CLIENT_SECRET', '')
+        client_id = settings.SOCIAL_AUTH_GOOGLE_OAUTH2_KEY
+        client_secret = settings.SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET
         
         token_data = {
             'code': code,
@@ -1783,33 +1505,13 @@ def google_callback(request):
             return Response({"detail": "Email not provided by Google"}, status=status.HTTP_400_BAD_REQUEST)
         
         # Find or create user
-        try:
-            user = User.objects.get(email=email)
-            # Update user details if needed
-        except User.DoesNotExist:
-            # Create new user
-            username = email.split('@')[0]
-            
-            # Make sure username is unique
-            base_username = username
-            counter = 1
-            while User.objects.filter(username=username).exists():
-                username = f"{base_username}{counter}"
-                counter += 1
-            
-            user = User.objects.create_user(
-                username=username,
-                email=email,
-                password=str(uuid.uuid4())  # Random password since login is via OAuth
-            )
-            
-            # Create profile
-            profile = Profile.objects.create(
+        username = email.split('@')[0]
+        user, created = User.objects.get_or_create(email=email, username=username)
+        if created:
+            Profile.objects.create(
                 user=user,
-                full_name=user_info.get('name', ''),
-                # Other fields will be filled by the user later
+                full_name=user_info.get('name', '')
             )
-        
         # Generate token
         token, _ = Token.objects.get_or_create(user=user)
         
@@ -1818,6 +1520,95 @@ def google_callback(request):
             "user_id": user.id,
             "username": user.username,
             "email": user.email
+        })
+    except Exception as e:
+        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def microsoft_callback(request):
+    """
+    Handle Microsoft OAuth code exchange and user creation/login.
+    """
+    try:
+        code = request.data.get('code')
+        redirect_uri = request.data.get('redirect_uri')
+        device_id = request.data.get('device_id')
+        device_name = request.data.get('device_name')
+        
+        # Check if request is coming from a private IP
+        client_ip = request.META.get('REMOTE_ADDR', '')
+        is_private_ip = (
+            client_ip.startswith('10.') or 
+            client_ip.startswith('172.16.') or 
+            client_ip.startswith('192.168.') or
+            client_ip == '127.0.0.1'
+        )
+        
+        # For private IP addresses, device_id and device_name are required
+        if is_private_ip and (not device_id or not device_name):
+            return Response(
+                {"error": "invalid_request", "error_description": "device_id and device_name are required for private IP access"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not code or not redirect_uri:
+            return Response(
+                {"error": "Missing code or redirect_uri parameter"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get OAuth credentials
+        client_id = settings.SOCIAL_AUTH_MICROSOFT_OAUTH2_KEY
+        client_secret = settings.SOCIAL_AUTH_MICROSOFT_OAUTH2_SECRET
+        
+        # Exchange code for token with Microsoft
+        token_url = 'https://login.microsoftonline.com/common/oauth2/v2.0/token'
+        token_data = {
+            'client_id': client_id,
+            'client_secret': client_secret,
+            'code': code,
+            'redirect_uri': redirect_uri,
+            'grant_type': 'authorization_code',
+        }
+        
+        token_response = requests.post(token_url, data=token_data)
+        if token_response.status_code != 200:
+            return Response({"detail": "Failed to exchange code for token"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        token_json = token_response.json()
+        access_token = token_json.get('access_token')
+        
+        # Get user info from Microsoft Graph
+        user_info_url = 'https://graph.microsoft.com/v1.0/me'
+        user_info_response = requests.get(user_info_url, headers={
+            'Authorization': f'Bearer {access_token}'
+        })
+        if user_info_response.status_code != 200:
+            return Response({"detail": "Failed to get user info"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        user_info = user_info_response.json()
+        email = user_info.get('mail') or user_info.get('userPrincipalName')
+        
+        if not email:
+            return Response({"error": "No email found in Microsoft user data"},status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if user exists with this email
+        username = email.split('@')[0]
+        user, created = User.objects.get_or_create(email=email, username=username)
+        if created:
+            Profile.objects.create(
+                user=user,
+                full_name=user_info.get('name', '')
+            )
+        # Generate token
+        token, _ = Token.objects.get_or_create(user=user)
+        
+        return Response({
+            'token': token.key,
+            'user_id': user.id,
+            'email': user.email,
+            'username': user.username
         })
     except Exception as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -1831,7 +1622,7 @@ def login_view(request):
     google_login_url = f"https://accounts.google.com/o/oauth2/auth"
     redirect_uri = f"{settings.API_URL}/sso-callback/google"
     
-    client_id = os.environ.get('GOOGLE_CLIENT_ID', '')
+    client_id = settings.SOCIAL_AUTH_GOOGLE_OAUTH2_KEY
     
     google_login = f"{google_login_url}?client_id={client_id}&redirect_uri={redirect_uri}&response_type=code&scope=email%20profile&access_type=offline&prompt=consent"
     
@@ -1847,56 +1638,49 @@ def login_view(request):
 @permission_classes([IsAuthenticated])
 def update_avatar(request):
     """
-    Update the avatar of the authenticated user
+    Update user avatar
     """
     try:
-        if 'avatar' not in request.FILES:
-            return Response({"error": "No avatar file provided"}, status=status.HTTP_400_BAD_REQUEST)
-        
         user = request.user
-        avatar_file = request.FILES['avatar']
         
-        # Create avatar directory if it doesn't exist
-        import os
-        from django.conf import settings
+        # Get the uploaded file
+        avatar_file = request.FILES.get('avatar')
+        if not avatar_file:
+            return Response({"error": "No file provided"}, status=400)
         
-        avatar_dir = os.path.join(settings.MEDIA_ROOT, 'avatars')
-        os.makedirs(avatar_dir, exist_ok=True)
+        # Check file size (limit to 5MB)
+        if avatar_file.size > 5 * 1024 * 1024:
+            return Response({"error": "File size exceeds 5MB limit"}, status=400)
         
-        # Generate unique filename
-        file_ext = os.path.splitext(avatar_file.name)[1]
-        filename = f"avatar_{user.id}{file_ext}"
-        filepath = os.path.join(avatar_dir, filename)
+        # Check file type
+        if not avatar_file.content_type.startswith('image/'):
+            return Response({"error": "File must be an image"}, status=400)
         
-        # Save file
-        with open(filepath, 'wb+') as destination:
-            for chunk in avatar_file.chunks():
-                destination.write(chunk)
+        # Generate a unique filename
+        import uuid
+        filename = f"avatar_{user.id}_{uuid.uuid4()}.jpg"
         
-        # Update the avatar URL in UserProfile if it exists
+        # Save file to storage
+        file_path = default_storage.save(f"avatars/{filename}", ContentFile(avatar_file.read()))
+        
+        # Generate public URL
+        avatar_url = default_storage.url(file_path)
+        
+        # Update the avatar URL in Profile
         try:
-            from users.models import UserProfile
-            user_profile, created = UserProfile.objects.get_or_create(
-                user=user,
-                defaults={
-                    'full_name': user.get_full_name() or user.username,
-                    'is_profile_completed': False
-                }
-            )
-            
-            # Set avatar URL path in user profile
-            avatar_url = f"/media/avatars/{filename}"
-            user_profile.avatar_url = avatar_url
-            user_profile.save()
-        except Exception as e:
-            # Continue even if UserProfile update fails
-            print(f"Error updating UserProfile avatar: {str(e)}")
+            profile = Profile.objects.get(user=user)
+            profile.avatar_url = avatar_url
+            profile.save()
+        except Profile.DoesNotExist:
+            profile = Profile.objects.create(user=user, avatar_url=avatar_url)
         
-        # Return the avatar URL
-        avatar_url = f"/media/avatars/{filename}"
-        return Response({"avatar_url": avatar_url}, status=status.HTTP_200_OK)
+        return Response({
+            "avatar_url": avatar_url,
+            "message": "Avatar updated successfully"
+        })
+        
     except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({"error": str(e)}, status=500)
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -2059,62 +1843,83 @@ def dataset_by_slug(request, slug):
         if datasets.exists():
             dataset = datasets.first()
             
+            # Get actual paper count from the ManyToMany relationship
+            paper_count = dataset.papers.count()
+            
             dataset_data = {
                 "id": str(dataset.id),
                 "name": dataset.name,
-                "abbreviation": dataset.name[:10] if len(dataset.name) > 10 else dataset.name,
+                "abbreviation": dataset.abbreviation if dataset.abbreviation else dataset.name[:10],
                 "description": dataset.description,
                 "downloadUrl": dataset.source_url,
-                "language": "English",  # Default value
+                "language": dataset.language if dataset.language else "English",
                 "category": dataset.data_type or "Unknown",
-                "tasks": [],  # Default empty list
-                "paperCount": dataset.papers.count(),
-                "benchmarks": 0  # Default value
+                "tasks": dataset.tasks if dataset.tasks else [],
+                "paperCount": paper_count,
+                "benchmarks": dataset.benchmarks if dataset.benchmarks else [],
+                "link": dataset.link if dataset.link else None,
+                "paper_link": dataset.paper_link if dataset.paper_link else None,
+                "subtitle": dataset.subtitle if dataset.subtitle else None,
+                "thumbnailUrl": dataset.thumbnailUrl if dataset.thumbnailUrl else None,
+                "dataloaders": dataset.dataloaders if dataset.dataloaders else [],
+                "created_at": dataset.created_at.isoformat() if dataset.created_at else None,
+                "updated_at": dataset.updated_at.isoformat() if dataset.updated_at else None,
+                "isStarred": False  # Default value, will update below if user is authenticated
             }
-                
-            # Get related papers
+            
+            # Check if dataset is starred by current user
+            if request.user.is_authenticated:
+                try:
+                    is_starred = InterestingDataset.objects.filter(user=request.user, dataset=dataset).exists()
+                    dataset_data["isStarred"] = is_starred
+                except Exception as e:
+                    print(f"Error checking if dataset is starred: {str(e)}")
+            
+            # Get related papers data
             related_papers = []
-            if hasattr(dataset, 'papers') and dataset.papers.exists():
-                for paper in dataset.papers.all():
-                    try:
-                        authors = json.loads(paper.authors) if paper.authors else ["Unknown"]
-                    except:
-                        authors = ["Unknown"]
-                        
-                    try:
-                        keywords = json.loads(paper.keywords) if paper.keywords else []
-                    except:
-                        keywords = []
-                        
+            if hasattr(dataset, 'papers'):
+                papers = dataset.papers.all().order_by('-year')
+                for paper in papers:
+                    # Build paper data
                     paper_data = {
                         "id": str(paper.id),
                         "title": paper.title,
-                        "authors": authors,
+                        "authors": paper.authors if hasattr(paper, 'authors') else [],
+                        "abstract": paper.abstract,
                         "conference": paper.conference,
                         "year": paper.year,
-                        "field": paper.field
+                        "field": paper.field if hasattr(paper, 'field') else "",
+                        "venue_type": paper.venue_type if hasattr(paper, 'venue_type') else "conference"
                     }
-                    
                     related_papers.append(paper_data)
             
             # Get similar datasets
             similar_datasets = []
-            if hasattr(dataset, 'similar_datasets') and dataset.similar_datasets.exists():
-                for similar in dataset.similar_datasets.all():
-                    similar_data = {
-                        "id": str(similar.id),
-                        "name": similar.name,
-                        "abbreviation": similar.name[:10] if len(similar.name) > 10 else similar.name,
-                        "description": similar.description,
-                        "downloadUrl": similar.source_url,
-                        "language": "English",
-                        "category": similar.data_type or "Unknown",
-                        "tasks": [],
-                        "paperCount": similar.papers.count(),
-                        "benchmarks": 0
-                    }
-                    similar_datasets.append(similar_data)
-                    
+            
+            # Get similar datasets from the DatasetSimilarDataset relation table
+            from public_api.models import DatasetSimilarDataset
+            similar_relations = DatasetSimilarDataset.objects.filter(from_dataset=dataset)
+            
+            for relation in similar_relations:
+                similar = relation.to_dataset
+                
+                # Get the actual count of related papers from the ManyToMany relationship
+                similar_paper_count = similar.papers.count()
+                
+                similar_data = {
+                    "id": str(similar.id),
+                    "name": similar.name,
+                    "abbreviation": similar.abbreviation if similar.abbreviation else similar.name[:10],
+                    "description": similar.description,
+                    "downloadUrl": similar.source_url,
+                    "language": similar.language if similar.language else "English",
+                    "category": similar.data_type or "Unknown",
+                    "tasks": similar.tasks if similar.tasks else [],
+                    "paperCount": similar_paper_count,
+                    "benchmarks": similar.benchmarks if similar.benchmarks else []
+                }
+                similar_datasets.append(similar_data)
+                
             # Structure the complete response
             result = {
                 "dataset": dataset_data,
@@ -2267,35 +2072,46 @@ def interesting_datasets(request):
         
         result = []
         for dataset in paginated_datasets:
+            # Get the actual count of related papers from the ManyToMany relationship
+            paper_count = dataset.papers.count()
+            
             dataset_data = {
                 "id": str(dataset.id),
                 "name": dataset.name,
-                "abbreviation": dataset.name[:10] if len(dataset.name) > 10 else dataset.name,
+                "abbreviation": dataset.abbreviation if dataset.abbreviation else dataset.name[:10],
                 "description": dataset.description,
                 "downloadUrl": dataset.source_url,
-                "language": "English",  # Default value
+                "language": dataset.language if dataset.language else "English",
                 "category": dataset.data_type or "Unknown",
-                "tasks": [],  # Default empty list
-                "paperCount": dataset.papers.count(),
-                "benchmarks": 0  # Default value
+                "tasks": dataset.tasks if dataset.tasks else [],
+                "paperCount": paper_count,
+                "benchmarks": dataset.benchmarks if dataset.benchmarks else [],
+                "link": dataset.link if dataset.link else None,
+                "paper_link": dataset.paper_link if dataset.paper_link else None,
+                "subtitle": dataset.subtitle if dataset.subtitle else None,
+                "thumbnailUrl": dataset.thumbnailUrl if dataset.thumbnailUrl else None,
+                "dataloaders": dataset.dataloaders if dataset.dataloaders else [],
+                "created_at": dataset.created_at.isoformat() if dataset.created_at else None,
+                "updated_at": dataset.updated_at.isoformat() if dataset.updated_at else None,
+                "isStarred": False  # Default value, will update below if user is authenticated
             }
-                
-            result.append(dataset_data)
             
-        # Create response with pagination metadata
-        response_data = {
-            "results": result,
-            "pagination": {
-                "page": page,
-                "pageSize": page_size,
-                "totalItems": total_count,
-                "totalPages": (total_count + page_size - 1) // page_size
-            }
+            result.append(dataset_data)
+        
+        # Pagination information
+        pagination = {
+            "page": page,
+            "pageSize": page_size,
+            "totalItems": total_count,
+            "totalPages": math.ceil(total_count / page_size) if page_size > 0 else 0
         }
         
-        return Response(response_data)
+        return Response({
+            "results": result,
+            "pagination": pagination
+        })
     except Exception as e:
-        return Response({"error": str(e), "traceback": traceback.format_exc()}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -3353,16 +3169,21 @@ def my_library(request):
             
         elif section == 'recommended':
             # Extract keywords from user profile
-            profile = request.user.profile
+            try:
+                profile = Profile.objects.get(user=request.user)
+            except Profile.DoesNotExist:
+                # Create profile if it doesn't exist
+                profile = Profile.objects.create(user=request.user)
+            
             user_keywords = []
             
-            # From research interests
+            # From research interests - handle None values
             if profile.research_interests:
-                user_keywords = user_keywords + [k.strip() for k in profile.research_interests.split(',') if k.strip()]
+                user_keywords = user_keywords + [k.strip() for k in profile.research_interests.split(',') if k and k.strip()]
                 
-            # From additional keywords
+            # From additional keywords - handle None values
             if profile.additional_keywords:
-                user_keywords = user_keywords + [k.strip() for k in profile.additional_keywords.split(',') if k.strip()]
+                user_keywords = user_keywords + [k.strip() for k in profile.additional_keywords.split(',') if k and k.strip()]
                 
             # Remove duplicates
             user_keywords = list(set(user_keywords))
@@ -3384,12 +3205,13 @@ def my_library(request):
             for paper in papers:
                 if paper.id in existing_paper_ids:
                     continue
-                    
-                # Check if paper is recent
-                if paper.created_at and paper.created_at < thirty_days_ago:
+                
+                # Skip papers without created_at date or older than 30 days
+                if not hasattr(paper, 'created_at') or paper.created_at is None or paper.created_at < thirty_days_ago:
                     continue
                     
                 paper_keywords = []
+                # Safely process keywords
                 if paper.keywords:
                     if isinstance(paper.keywords, list):
                         paper_keywords = paper.keywords
@@ -3397,7 +3219,10 @@ def my_library(request):
                         try:
                             paper_keywords = json.loads(paper.keywords)
                         except json.JSONDecodeError:
-                            paper_keywords = [k.strip() for k in paper.keywords.split(',') if k.strip()]
+                            paper_keywords = [k.strip() for k in paper.keywords.split(',') if k and k.strip()]
+                    else:
+                        # Handle unexpected keyword format
+                        continue
                 
                 # Check if any keywords match
                 if any(k.lower() in [pk.lower() for pk in paper_keywords] for k in user_keywords):
@@ -3405,11 +3230,181 @@ def my_library(request):
             
             # Limit to 20 papers
             filtered_papers = filtered_papers[:20]
+            
+            # Use PaperSerializer for proper venue_name inclusion
             serializer = PaperSerializer(filtered_papers, many=True)
             return Response(serializer.data)
             
         else:
             return Response({"error": "Invalid section parameter"}, status=status.HTTP_400_BAD_REQUEST)
+            
+    except Exception as e:
+        return Response({"error": str(e), "traceback": traceback.format_exc()}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def upload_paper(request):
+    """
+    Upload a PDF academic paper and extract metadata.
+    
+    Required:
+    - file: PDF file upload (multipart/form-data)
+    
+    Process:
+    1. Validates the uploaded file is a PDF
+    2. Extracts text from the PDF
+    3. Analyzes the content using Azure OpenAI to extract metadata
+    4. Creates a paper record with the extracted metadata
+    
+    Returns:
+    - Complete paper object with extracted metadata
+    """
+    # Debug information
+    print("---- Paper Upload Debug ----")
+    print(f"User: {request.user}")
+    print(f"Auth: {request.auth}")
+    print(f"FILES: {request.FILES}")
+    print(f"Content-Type: {request.headers.get('Content-Type')}")
+    
+    # Check if 'file' is in the request
+    if 'file' not in request.FILES:
+        return Response(
+            {"error": "No file was provided."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    file = request.FILES['file']
+    
+    # Check if the file is a PDF
+    if not file.name.lower().endswith('.pdf'):
+        return Response(
+            {"error": "Only PDF files are supported."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Extract text from PDF
+    try:
+        from users.utils import extract_text_from_pdf, extract_metadata_with_openai
+        pdf_text = extract_text_from_pdf(file)
+        
+        # Extract metadata using OpenAI
+        metadata = extract_metadata_with_openai(pdf_text, file.name)
+        
+        # Create a paper object based on public_api's Paper model
+        from public_api.models import Paper
+        import os
+        import uuid
+        
+        # Save the file first
+        file_name = file.name
+        file_path = f"papers/{uuid.uuid4()}_{file_name}"
+        media_root = os.path.join(settings.MEDIA_ROOT, file_path)
+        os.makedirs(os.path.dirname(media_root), exist_ok=True)
+        
+        with open(media_root, 'wb+') as destination:
+            for chunk in file.chunks():
+                destination.write(chunk)
+        
+        file_url = f"{settings.MEDIA_URL}{file_path}"
+        
+        # Create paper with the model fields from public_api
+        paper = Paper.objects.create(
+            title=metadata['title'],
+            authors=metadata['authors'],
+            abstract=metadata['abstract'],
+            conference=metadata['conference'],
+            year=metadata['year'],
+            field=metadata['field'],
+            keywords=metadata['keywords'],
+            downloadUrl=file_url,
+            doi=metadata['doi'],
+            bibtex=metadata['bibtex'],
+            sourceCode=metadata['sourceCode'],
+        )
+        
+        # Also create a record in the user's interesting papers
+        from public_api.models import InterestingPaper
+        InterestingPaper.objects.create(
+            user=request.user,
+            paper=paper
+        )
+        
+        # Also create a record in the user's downloaded papers
+        from public_api.models import DownloadedPaper
+        DownloadedPaper.objects.create(
+            user=request.user,
+            paper=paper
+        )
+        
+        # Return a response compatible with the frontend
+        response_data = {
+            "id": str(paper.id),
+            "title": paper.title,
+            "authors": paper.authors,
+            "conference": paper.conference,
+            "year": paper.year,
+            "field": paper.field,
+            "keywords": paper.keywords,
+            "abstract": paper.abstract,
+            "downloadUrl": paper.downloadUrl,
+            "doi": paper.doi,
+            "bibtex": paper.bibtex,
+            "sourceCode": paper.sourceCode,
+            "is_interesting": True,
+            "is_downloaded": True,
+            "is_uploaded": True,
+            "added_date": paper.created_at.isoformat(),
+            "file_name": file_name,
+            "file_size": file.size
+        }
+        
+        return Response(response_data, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        import traceback
+        print(f"Error processing the PDF: {str(e)}")
+        print(traceback.format_exc())
+        return Response(
+            {"error": f"Error processing the PDF: {str(e)}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def research_assistant(request):
+    """
+    Endpoint for research assistant functionality
+    """
+    try:
+        import requests
+        
+        data = request.data
+        query = data.get('query', '')
+        user_id = str(request.user.id) if request.user.is_authenticated else None
+        system_prompt = data.get('system_prompt', None)
+        
+        if not query:
+            return Response({"error": "Query is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Forward the request to the research assistant service
+        assistant_url = os.environ.get('RESEARCH_ASSISTANT_URL', 'http://localhost:8090')
+        
+        payload = {
+            "query": query,
+            "user_id": user_id,
+            "system_prompt": system_prompt
+        }
+        
+        try:
+            response = requests.post(f"{assistant_url}/query", json=payload, timeout=30)
+            response.raise_for_status()
+            return Response(response.json())
+        except requests.exceptions.RequestException as e:
+            print(f"Error connecting to research assistant service: {str(e)}")
+            return Response(
+                {"error": f"Error connecting to research assistant service: {str(e)}"},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
             
     except Exception as e:
         return Response({"error": str(e), "traceback": traceback.format_exc()}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
