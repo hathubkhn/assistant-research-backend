@@ -28,9 +28,8 @@ from drf_yasg import openapi
 
 # API patterns from public_api
 api_patterns = [
-    path('research-assistant/query/', public_api_views.research_assistant, name='api-research-assistant-query'),
-    
-    path('papers/', public_api_views.papers_list, name='api-papers-list'),
+    path(route='', path=include('public_api.urls')),
+    path('research-assistant/query/', public_api_views.research_assistant, name='api-research-assistant-query'),    
     path('papers/<uuid:paper_id>/', public_api_views.paper_detail, name='api-paper-detail'),
     path('papers/by-slug/<str:slug>/', public_api_views.paper_by_slug, name='api-paper-by-slug'),
     path('papers/by-venue/<str:venue_type>/', public_api_views.papers_by_venue_type, name='api-papers-by-venue-type'),

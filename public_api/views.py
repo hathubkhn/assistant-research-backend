@@ -5,6 +5,7 @@ from django.db.models import Q, Sum, Avg
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
+from rest_framework.views import APIView
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
@@ -24,71 +25,85 @@ from django.core.paginator import Paginator
 import requests
 import os
 from django.core.files.storage import default_storage
+from rest_framework import filters
 
 User = get_user_model()
 
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def papers_list(request):
-    """
-    Get a list of all papers with pagination
-    """
-    try:
-        # Get query parameters
-        year = request.query_params.get('year')
-        venue = request.query_params.get('venue')
-        start_date = request.query_params.get('startDate')
-        end_date = request.query_params.get('endDate')
-        
-        # Pagination parameters
-        page = int(request.query_params.get('page', 1))
-        page_size = int(request.query_params.get('pageSize', 20))
-
-        # Build filter criteria
-        filter_criteria = {}
-        if year:
-            filter_criteria['publication_date__year'] = int(year)
-        if venue:
-            filter_criteria['journal_or_conference'] = venue
-
-        # Add date filtering if provided
-        if start_date:
-            try:
-                start_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
-                filter_criteria['crawled_at__gte'] = start_date
-            except ValueError:
-                pass
-        if end_date:
-            try:
-                end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
-                filter_criteria['crawled_at__lte'] = end_date
-            except ValueError:
-                pass
-
-        # Query the database
-        papers = Paper.objects.filter(**filter_criteria)
-        
-        # Apply pagination
-        paginator = Paginator(papers, page_size)
-        paginated_papers = paginator.page(page)
-        
-        serializer = PaperListSerializer(paginated_papers, many=True)
-        result = serializer.data
-        
-        # Create response with pagination metadata
-        response_data = {
-            "results": result,
-            "pagination": {
-                "page": page,
-                "pageSize": page_size,
-                "totalItems": paginator.count,
-                "totalPages": paginator.num_pages
-            }
-        }
+class PapersList(APIView):
+    queryset = Paper.objects.all()
+    serializer_class = PaperListSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    ordering_fields = ['-publication_date']
+    search_fields = ['title']
+    
+    def filter_queryset(self):
+        for backend in self.filter_backends:
+            self.queryset = backend().filter_queryset(self.request, self.queryset, self)
+        return self.queryset
+    
+    def get(self, request):
+        """
+        Get a list of all papers with pagination
+        """
+        try:
+            queryset = self.filter_queryset()
             
-        return Response(response_data)
-    except Exception as e:
-        return Response({"error": str(e), "traceback": traceback.format_exc()}, status=500)
+            # Get query parameters
+            year = request.query_params.get('year')
+            venue = request.query_params.get('venue')
+            start_date = request.query_params.get('startDate')
+            end_date = request.query_params.get('endDate')
+            
+            # Pagination parameters
+            page = int(request.query_params.get('page', 1))
+            page_size = int(request.query_params.get('pageSize', 20))
+
+            # Build filter criteria
+            filter_criteria = {}
+            if year:
+                filter_criteria['publication_date__year'] = int(year)
+            if venue:
+                filter_criteria['journal_or_conference'] = venue
+
+            # Add date filtering if provided
+            if start_date:
+                try:
+                    start_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                    filter_criteria['crawled_at__gte'] = start_date
+                except ValueError:
+                    pass
+            if end_date:
+                try:
+                    end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                    filter_criteria['crawled_at__lte'] = end_date
+                except ValueError:
+                    pass
+
+            # Query the database
+            papers = queryset.filter(**filter_criteria)
+            
+            # Apply pagination
+            paginator = Paginator(papers, page_size)
+            paginated_papers = paginator.page(page)
+            
+            serializer = PaperListSerializer(paginated_papers, many=True)
+            result = serializer.data
+            
+            # Create response with pagination metadata
+            response_data = {
+                "results": result,
+                "pagination": {
+                    "page": page,
+                    "pageSize": page_size,
+                    "totalItems": paginator.count,
+                    "totalPages": paginator.num_pages
+                }
+            }
+
+            return Response(response_data)
+        except Exception as e:
+            return Response({"error": str(e), "traceback": traceback.format_exc()}, status=500)
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -378,7 +393,7 @@ def datasets_list(request):
         return Response(response_data)
     except Exception as e:
         return Response({"error": str(e)}, status=500)
-        
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def dataset_detail(request, dataset_id):

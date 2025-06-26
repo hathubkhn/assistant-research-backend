@@ -92,6 +92,10 @@ class Paper(models.Model):
 
     class Meta:
         db_table = 'papers'
+        indexes = [
+            models.Index(fields=['-publication_date']),
+            models.Index(fields=['title'])
+        ]
 
     @property
     def venue_type(self):
