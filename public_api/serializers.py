@@ -72,7 +72,7 @@ class PaperListSerializer(serializers.ModelSerializer):
         return obj.pdf_url
 
     def get_year(self, obj):
-        return obj.publication_date.year
+        return obj.publication_date.year if obj.publication_date else None
     
     def get_venueType(self, obj):
         return obj.venue_type

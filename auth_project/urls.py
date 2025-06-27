@@ -15,20 +15,17 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path, include, re_path
+from django.urls import path, include
 from django.views.generic import RedirectView
 from django.conf import settings
 from django.conf.urls.static import static
 from public_api import views as public_api_views
 
-# drf-yasg imports
-from rest_framework import permissions
-from drf_yasg.views import get_schema_view
-from drf_yasg import openapi
+
 
 # API patterns from public_api
 api_patterns = [
-    path(route='', path=include('public_api.urls')),
+    path(route='', view=include('public_api.urls')),
     path('research-assistant/query/', public_api_views.research_assistant, name='api-research-assistant-query'),    
     path('papers/<uuid:paper_id>/', public_api_views.paper_detail, name='api-paper-detail'),
     path('papers/by-slug/<str:slug>/', public_api_views.paper_by_slug, name='api-paper-by-slug'),
@@ -101,25 +98,6 @@ api_patterns = [
     path('my-library/', public_api_views.my_library, name='api-my-library'),
 ]
 
-# Swagger schema view configuration
-schema_view = get_schema_view(
-    openapi.Info(
-        title="Research Assistant API",
-        default_version='v1',
-        description="API documentation for Research Assistant project\n\n"
-                   "**Note**: SSO callback endpoints (e.g., /api/sso-callback/google/) are not testable "
-                   "directly from Swagger UI as they are designed to receive redirects from OAuth providers.",
-        terms_of_service="https://www.google.com/policies/terms/",
-        contact=openapi.Contact(email="contact@example.com"),
-        license=openapi.License(name="MIT License"),
-    ),
-    public=True,
-    permission_classes=(permissions.AllowAny,),
-    patterns=[
-        path('api/', include(api_patterns)),  # Updated to use api_patterns instead of users.urls
-    ],
-    url=getattr(settings, 'API_URL', 'http://localhost:8000'),
-)
 
 urlpatterns = [
     # Redirect root URL to API login
@@ -135,11 +113,6 @@ urlpatterns = [
     # Add explicit SSO URLs
     path('accounts/google/login/', include('allauth.socialaccount.providers.google.urls')),
     path('accounts/microsoft/login/', include('allauth.socialaccount.providers.microsoft.urls')),
-    
-    # Swagger documentation URLs
-    re_path(r'^swagger(?P<format>\.json|\.yaml)$', schema_view.without_ui(cache_timeout=0), name='schema-json'),
-    path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
-    path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
 ]
 
 # Serve media files in development

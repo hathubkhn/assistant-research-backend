@@ -81,7 +81,7 @@ class PapersList(APIView):
                     pass
 
             # Query the database
-            papers = queryset.filter(**filter_criteria)
+            papers = queryset.filter(**filter_criteria).order_by(self.ordering_fields[0])
             
             # Apply pagination
             paginator = Paginator(papers, page_size)
@@ -103,7 +103,7 @@ class PapersList(APIView):
 
             return Response(response_data)
         except Exception as e:
-            return Response({"error": str(e), "traceback": traceback.format_exc()}, status=500)
+                return Response({"error": str(e)}, status=500)
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -899,7 +899,6 @@ def publication_detail(request, publication_id):
             
     except Exception as e:
         print(f"[DEBUG] Error in publication_detail: {str(e)}")
-        print(traceback.format_exc())
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
@@ -942,14 +941,11 @@ def dashboard_stats(request):
     and most common keywords
     """
     try:
-        # Get user for created_by filter if authenticated
         user = request.user if request.user.is_authenticated else None
         
-        # Get date range parameters
         start_date = request.query_params.get('startDate')
         end_date = request.query_params.get('endDate')
         
-        # Build the where clause based on date range
         query_params = {}
         if start_date:
             try:
@@ -964,34 +960,27 @@ def dashboard_stats(request):
             except ValueError:
                 pass
         
-        # Filter by created_by if authenticated user
         if user:
             query_params['created_by'] = user
-            
-        # Get all papers within date range (and created_by if authenticated)
+
         all_papers = Paper.objects.filter(**query_params)
         
-        # For Papers Published by Month, only filter by created_by, not by date
         monthly_query = {}
         if user:
             monthly_query['created_by'] = user
             
-        # For monthly papers, we need all papers by this user regardless of date filter
         monthly_papers_queryset = Paper.objects.filter(**monthly_query)
         
-        # Count papers by month
         month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
         monthly_papers_count = {month: 0 for month in month_names}
         
         for paper in monthly_papers_queryset:
-            month_idx = paper.created_at.month - 1  # 0-based index
+            month_idx = paper.created_at.month - 1
             month_name = month_names[month_idx]
             monthly_papers_count[month_name] += 1
         
-        # Convert to array format for the frontend
         monthly_papers = [{'name': name, 'papers': count} for name, count in monthly_papers_count.items()]
         
-        # Get papers by category (field) from the filtered papers (based on date and created_by)
         paper_fields = {}
         for paper in all_papers:
             fields = paper.field.split(',')
@@ -1002,15 +991,12 @@ def dashboard_stats(request):
                 if field:
                     paper_fields[field] += 1
         
-        # Convert to array format and sort by count
         category_data = [{'name': name, 'value': count} for name, count in paper_fields.items()]
         category_data.sort(key=lambda x: x['value'], reverse=True)
-        category_data = category_data[:10]  # Top 10 categories
+        category_data = category_data[:10]
         
-        # Get papers with their keywords from the filtered papers
         papers_with_keywords = all_papers.values('id', 'keywords')
         
-        # Count occurrences of each keyword
         keyword_count = {}
         
         for index, paper in enumerate(papers_with_keywords):
@@ -1022,7 +1008,6 @@ def dashboard_stats(request):
                             keyword_count[keyword] = {'id': index * 100 + len(keyword_count), 'name': keyword, 'count': 0}
                         keyword_count[keyword]['count'] += 1
             except (json.JSONDecodeError, TypeError):
-                # Try comma-separated format
                 if paper['keywords'] and isinstance(paper['keywords'], str):
                     keywords = paper['keywords'].split(',')
                     for keyword in keywords:
@@ -1032,10 +1017,9 @@ def dashboard_stats(request):
                                 keyword_count[keyword] = {'id': index * 100 + len(keyword_count), 'name': keyword, 'count': 0}
                             keyword_count[keyword]['count'] += 1
         
-        # Convert to array and sort by count
         keyword_sets = list(keyword_count.values())
         keyword_sets.sort(key=lambda x: x['count'], reverse=True)
-        keyword_sets = keyword_sets[:10]  # Top 10 keywords
+        keyword_sets = keyword_sets[:10]
         
         return Response({
             'monthlyPapers': monthly_papers,
@@ -1118,7 +1102,6 @@ def keywords_stats(request):
     This function is kept for backward compatibility, but it's recommended
     to use research_interests_stats instead.
     """
-    # Convert the DRF Request back to HttpRequest before passing it
     return research_interests_stats(request._request)
 
 @api_view(['GET'])
@@ -1128,17 +1111,12 @@ def research_interests_stats(request):
     Get research interests statistics with optional date filtering
     """
     try:
-        import traceback
-        
-        # Get user for created_by filter if authenticated
         user = request.user if request.user.is_authenticated else None
         
-        # Get date range parameters
         start_date = request.query_params.get('startDate')
         end_date = request.query_params.get('endDate')
-        period = request.query_params.get('period', 'monthly')  # 'daily', 'monthly', 'yearly'
+        period = request.query_params.get('period', 'monthly')
         
-        # Build the query based on date range
         query_params = {}
         if start_date:
             try:
@@ -1153,20 +1131,11 @@ def research_interests_stats(request):
             except ValueError:
                 pass
             
-        # Debugging log query
-        print(f"research_interests_stats query_params: {query_params}")
-            
-        # Filter by created_by if authenticated user (and not anonymous)
         if user and not user.is_anonymous:
             query_params['created_by'] = user
         
-        # Get papers with their keywords/research interests
         papers = Paper.objects.filter(**query_params).values('id', 'keywords', 'created_at')
         
-        # Log count for debugging
-        print(f"Found {papers.count()} papers for research interests stats")
-        
-        # Process research interests from all papers
         interests_counts = {}
         interests_by_period = {}
         
@@ -1177,45 +1146,33 @@ def research_interests_stats(request):
                     if isinstance(paper['keywords'], list):
                         keywords_array = paper['keywords']
                     elif isinstance(paper['keywords'], str):
-                        # Thử parse JSON nếu là string
                         try:
                             parsed_keywords = json.loads(paper['keywords'])
                             keywords_array = parsed_keywords if isinstance(parsed_keywords, list) else [paper['keywords']]
                         except json.JSONDecodeError:
-                            # Nếu không phải JSON, xử lý như chuỗi thường
                             keywords_array = [k.strip() for k in paper['keywords'].split(',') if k.strip()]
                     else:
                         print(f"Unknown keywords type for paper {paper['id']}: {type(paper['keywords'])}")
                         continue
             except Exception as e:
                 print(f"Error processing keywords for paper {paper['id']}: {str(e)}")
-                traceback.print_exc()
                 continue
             
-            # Skip if no keywords
             if not keywords_array:
                 continue
-                
-            # Log để debug
-            if paper == papers[0]:
-                print(f"First paper keywords: {keywords_array}")
-                
-            # Get period key based on paper's creation date
+
             date = paper['created_at']
             if period == 'daily':
                 period_key = date.strftime('%Y-%m-%d')
             elif period == 'yearly':
                 period_key = str(date.year)
-            else:  # monthly (default)
+            else:
                 period_key = date.strftime('%Y-%m')
             
-            # Initialize period data if not exists
             if period_key not in interests_by_period:
                 interests_by_period[period_key] = {}
             
-            # Count each keyword
             for keyword in keywords_array:
-                # Skip empty keywords
                 if not keyword or not isinstance(keyword, str):
                     continue
                     
@@ -1223,32 +1180,24 @@ def research_interests_stats(request):
                 if not keyword:
                     continue
                 
-                # Update overall count
                 if keyword not in interests_counts:
                     interests_counts[keyword] = 0
                 interests_counts[keyword] += 1
                 
-                # Update period count
                 if keyword not in interests_by_period[period_key]:
                     interests_by_period[period_key][keyword] = 0
                 interests_by_period[period_key][keyword] += 1
         
-        # Format for response
         keywords_list = [{'name': k, 'count': v} for k, v in interests_counts.items()]
         keywords_list.sort(key=lambda x: x['count'], reverse=True)
         
-        # If no keywords found but we have papers, try creating some mock data for testing
         if not interests_by_period and len(papers) > 0:
-            print(f"No keywords found despite having {len(papers)} papers. Creating mock data.")
-            # Using current period
             current_period = datetime.now().strftime('%Y-%m') if period == 'monthly' else datetime.now().strftime('%Y')
             interests_by_period[current_period] = {'AI': 10, 'Machine Learning': 8, 'Deep Learning': 6, 'NLP': 4, 'Computer Vision': 2}
         
-        # Format period data - show only top-1 keyword for each period for trend analysis
         period_data = []
         for period_key, keywords in sorted(interests_by_period.items()):
             if keywords:
-                # Get only top-1 keyword for this period
                 top_keyword = max(keywords.items(), key=lambda x: x[1])
                 period_item = {
                     'period': period_key,
@@ -1262,13 +1211,9 @@ def research_interests_stats(request):
             'periodData': period_data
         }
         
-        # Log the result size
-        print(f"Returning {len(result['keywords'])} keywords and {len(result['periodData'])} periods")
-        
         return Response(result)
     except Exception as e:
-        traceback.print_exc()
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        raise e
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
