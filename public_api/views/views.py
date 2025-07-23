@@ -1,7 +1,7 @@
 import json
 import traceback
 from datetime import datetime, timedelta
-from django.db.models import Q, Sum, Avg
+from django.db.models import Q, Sum, Avg, Count
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -16,10 +16,10 @@ import uuid
 import random
 import math
 
-from .authentication import AllowAnyAuthentication
-from .models import Paper, Dataset, InterestingPaper, Profile, Publication, DownloadedPaper, InterestingDataset, Journal, Conference
-from .serializers import (ProfileSerializer, PublicationSerializer, PaperDetailSerializer, 
-                          PaperSerializer, DatasetSerializer, PaperListSerializer)
+from ..authentication import AllowAnyAuthentication
+from ..models import Paper, Dataset, InterestingPaper, Profile, Publication, DownloadedPaper, InterestingDataset, Journal, Conference, Task
+from ..serializers import (ProfileSerializer, PublicationSerializer, PaperDetailSerializer, TaskListParamsSerializer,
+                          PaperSerializer, DatasetSerializer, PaperListSerializer, DatasetListSerializer, TaskSerializer)
 from rest_framework.authtoken.models import Token
 from django.core.paginator import Paginator
 import requests
@@ -32,7 +32,7 @@ User = get_user_model()
 class PapersList(APIView):
     queryset = Paper.objects.all()
     serializer_class = PaperListSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     ordering_fields = ['-publication_date']
     search_fields = ['title']
@@ -43,30 +43,26 @@ class PapersList(APIView):
         return self.queryset
     
     def get(self, request):
-        """
-        Get a list of all papers with pagination
-        """
         try:
             queryset = self.filter_queryset()
             
-            # Get query parameters
             year = request.query_params.get('year')
             venue = request.query_params.get('venue')
             start_date = request.query_params.get('startDate')
             end_date = request.query_params.get('endDate')
             
-            # Pagination parameters
             page = int(request.query_params.get('page', 1))
             page_size = int(request.query_params.get('pageSize', 20))
-
-            # Build filter criteria
+            task_ids = request.query_params.get('taskIds', [])
+            
             filter_criteria = {}
             if year:
                 filter_criteria['publication_date__year'] = int(year)
             if venue:
                 filter_criteria['journal_or_conference'] = venue
+            if task_ids:
+                filter_criteria['task_id__in'] = task_ids
 
-            # Add date filtering if provided
             if start_date:
                 try:
                     start_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
@@ -80,17 +76,13 @@ class PapersList(APIView):
                 except ValueError:
                     pass
 
-            # Query the database
             papers = queryset.filter(**filter_criteria).order_by(self.ordering_fields[0])
-            
-            # Apply pagination
             paginator = Paginator(papers, page_size)
             paginated_papers = paginator.page(page)
             
             serializer = PaperListSerializer(paginated_papers, many=True)
             result = serializer.data
             
-            # Create response with pagination metadata
             response_data = {
                 "results": result,
                 "pagination": {
@@ -100,10 +92,9 @@ class PapersList(APIView):
                     "totalPages": paginator.num_pages
                 }
             }
-
             return Response(response_data)
         except Exception as e:
-                return Response({"error": str(e)}, status=500)
+            return Response({"error": str(e)}, status=500)
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -280,119 +271,54 @@ def paper_by_slug(request, slug):
     except Exception as e:
         return Response({"error": str(e)}, status=500)
 
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def datasets_list(request):
-    """
-    Get a list of all datasets with pagination
-    """
-    try:
-        # Get query parameters
-        category = request.query_params.get('category')
-        language = request.query_params.get('language')
-        search = request.query_params.get('search')
-        
-        # Pagination parameters
-        page = int(request.query_params.get('page', 1))
-        page_size = int(request.query_params.get('pageSize', 20))
-        
-        # Use Dataset model from public_api.models
-        datasets = Dataset.objects.all()
-        
-        # Apply filters if provided
-        if category:
-            datasets = datasets.filter(data_type__icontains=category)
-        if language:
-            datasets = datasets.filter(name__icontains=language)
+
+class DatasetsList(APIView):
+    queryset = Dataset.objects.all()
+    serializer_class = DatasetSerializer
+    permission_classes = [AllowAny]
+    ordering_fields = ['-created_at']
+    
+    def get(self, request):
+        try:
+            category = request.query_params.get('category')
+            language = request.query_params.get('language')
+            search = request.query_params.get('search')
+            page = int(request.query_params.get('page', 1))
+            page_size = int(request.query_params.get('pageSize', 20))
             
-        # Apply search filter if provided
-        if search:
-            datasets = datasets.filter(
-                Q(name__icontains=search) | 
-                Q(description__icontains=search)
-            )
-        
-        # Count total items before pagination
-        total_count = datasets.count()
-        
-        # Apply pagination
-        start_index = (page - 1) * page_size
-        end_index = start_index + page_size
-        paginated_datasets = datasets[start_index:end_index]
-        
-        result = []
-        for dataset in paginated_datasets:
-            # Process tasks properly
-            tasks = []
-            if dataset.tasks:
-                if isinstance(dataset.tasks, list):
-                    tasks = dataset.tasks
-                elif isinstance(dataset.tasks, str):
-                    try:
-                        tasks = json.loads(dataset.tasks)
-                    except:
-                        tasks = [dataset.tasks]
+            datasets = Dataset.objects.all()
             
-            # Process benchmarks properly
-            benchmarks = []
-            if dataset.benchmarks:
-                if isinstance(dataset.benchmarks, list):
-                    benchmarks = dataset.benchmarks
-                elif isinstance(dataset.benchmarks, int):
-                    benchmarks = [{"placeholder": True} for _ in range(dataset.benchmarks)]
-                elif isinstance(dataset.benchmarks, str):
-                    try:
-                        benchmarks = json.loads(dataset.benchmarks)
-                    except:
-                        # If it's a number in string format
-                        try:
-                            benchmark_count = int(dataset.benchmarks)
-                            benchmarks = [{"placeholder": True} for _ in range(benchmark_count)]
-                        except:
-                            benchmarks = []
+            filter_q = Q()
+            if category:
+                filter_q &= Q(data_type__icontains=category)
+            if language:
+                filter_q &= Q(name__icontains=language)
+            if search:
+                filter_q &= (Q(name__icontains=search) | Q(description__icontains=search))
             
-            # Generate proper abbreviation
-            abbreviation = dataset.abbreviation
-            if not abbreviation or abbreviation == dataset.name:
-                if len(dataset.name.split()) > 1:
-                    # Try to create abbreviation from first letters of words
-                    words = dataset.name.split()
-                    abbreviation = ''.join(word[0] for word in words if word[0].isalpha()).upper()
-                else:
-                    abbreviation = dataset.name[:5].upper()
+            if filter_q:
+                datasets = datasets.filter(filter_q)
             
-            # Get the actual count of related papers from the ManyToMany relationship
-            paper_count = dataset.papers.count()
+            total_count = datasets.count()
+            paginator = Paginator(datasets, page_size)
+            paginated_datasets = paginator.page(page)
             
-            dataset_data = {
-                "id": str(dataset.id),
-                "name": dataset.name,
-                "abbreviation": abbreviation,
-                "description": dataset.description,
-                "downloadUrl": dataset.source_url,
-                "language": dataset.language if dataset.language else "English",
-                "category": dataset.data_type or "Unknown",
-                "tasks": tasks,
-                "paperCount": paper_count,
-                "benchmarks": benchmarks
+            serializer = DatasetListSerializer(paginated_datasets, many=True)
+            result = serializer.data
+
+            response_data = {
+                "results": result,
+                "pagination": {
+                    "page": page,
+                    "pageSize": page_size,
+                    "totalItems": total_count,
+                    "totalPages": (total_count + page_size - 1) // page_size
+                }
             }
-                
-            result.append(dataset_data)
             
-        # Create response with pagination metadata
-        response_data = {
-            "results": result,
-            "pagination": {
-                "page": page,
-                "pageSize": page_size,
-                "totalItems": total_count,
-                "totalPages": (total_count + page_size - 1) // page_size
-            }
-        }
-        
-        return Response(response_data)
-    except Exception as e:
-        return Response({"error": str(e)}, status=500)
+            return Response(response_data)
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -400,11 +326,10 @@ def dataset_detail(request, dataset_id):
     """
     Get details for a specific dataset
     """
+    import ipdb; ipdb.set_trace()
     try:
-        # Use Dataset model from public_api.models
         dataset = get_object_or_404(Dataset, id=dataset_id)
         
-        # Process tasks properly
         tasks = []
         if dataset.tasks:
             if isinstance(dataset.tasks, list):
@@ -415,7 +340,6 @@ def dataset_detail(request, dataset_id):
                 except:
                     tasks = [dataset.tasks]
         
-        # Process benchmarks properly
         benchmarks = []
         if dataset.benchmarks:
             if isinstance(dataset.benchmarks, list):
@@ -426,23 +350,20 @@ def dataset_detail(request, dataset_id):
                 try:
                     benchmarks = json.loads(dataset.benchmarks)
                 except:
-                    # If it's a number in string format
                     try:
                         benchmark_count = int(dataset.benchmarks)
                         benchmarks = [{"placeholder": True} for _ in range(benchmark_count)]
                     except:
                         benchmarks = []
-        
-        # Generate proper abbreviation
+
         abbreviation = dataset.abbreviation
         if not abbreviation or abbreviation == dataset.name:
             if len(dataset.name.split()) > 1:
-                # Try to create abbreviation from first letters of words
                 words = dataset.name.split()
                 abbreviation = ''.join(word[0] for word in words if word[0].isalpha()).upper()
             else:
                 abbreviation = dataset.name[:5].upper()
-            
+
         dataset_data = {
             "id": str(dataset.id),
             "name": dataset.name,
@@ -461,23 +382,20 @@ def dataset_detail(request, dataset_id):
             "dataloaders": dataset.dataloaders if dataset.dataloaders else [],
             "created_at": dataset.created_at.isoformat() if dataset.created_at else None,
             "updated_at": dataset.updated_at.isoformat() if dataset.updated_at else None,
-            "isStarred": False  # Default value, will update below if user is authenticated
+            "isStarred": False
         }
             
-        # Check if the dataset is starred by the current user
         if request.user.is_authenticated:
             try:
                 is_starred = InterestingDataset.objects.filter(user=request.user, dataset=dataset).exists()
                 dataset_data["isStarred"] = is_starred
             except Exception as e:
                 print(f"Error checking if dataset is starred: {str(e)}")
-            
-        # Get related papers from the many-to-many relationship
+
         related_papers = []
         if hasattr(dataset, 'papers'):
             papers = dataset.papers.all().order_by('-year')
             for paper in papers:
-                # Extract and parse author data safely
                 try:
                     authors = paper.authors
                     if isinstance(authors, str):
@@ -487,8 +405,7 @@ def dataset_detail(request, dataset_id):
                             authors = [authors]
                 except Exception as e:
                     authors = ["Unknown"]
-                    
-                # Extract and parse keywords safely
+
                 try:
                     keywords = paper.keywords
                     if isinstance(keywords, str):
@@ -498,12 +415,9 @@ def dataset_detail(request, dataset_id):
                             keywords = []
                 except Exception as e:
                     keywords = []
-                
-                # Get venue information
+
                 venue_type = paper.venue_type if hasattr(paper, 'venue_type') else "conference"
                 venue_name = paper.venue_name if hasattr(paper, 'venue_name') else paper.conference
-                
-                # Build paper data with more detailed information
                 paper_data = {
                     "id": str(paper.id),
                     "title": paper.title,
@@ -517,20 +431,16 @@ def dataset_detail(request, dataset_id):
                     "downloadUrl": paper.downloadUrl if paper.downloadUrl else None,
                     "doi": paper.doi if paper.doi else None
                 }
-                
                 related_papers.append(paper_data)
         
-        # Get similar datasets from the DatasetSimilarDataset model
         similar_datasets = []
         
-        # Get similar datasets from the DatasetSimilarDataset relation table
         from public_api.models import DatasetSimilarDataset
         similar_relations = DatasetSimilarDataset.objects.filter(from_dataset=dataset)
         
         for relation in similar_relations:
             similar = relation.to_dataset
             
-            # Get the actual count of related papers from the ManyToMany relationship
             similar_paper_count = similar.papers.count()
             
             similar_data = {
@@ -546,8 +456,7 @@ def dataset_detail(request, dataset_id):
                 "benchmarks": similar.benchmarks if similar.benchmarks else []
             }
             similar_datasets.append(similar_data)
-                
-        # Structure the complete response
+
         result = {
             "dataset": dataset_data,
             "relatedPapers": related_papers,
@@ -3368,3 +3277,36 @@ def research_assistant(request):
             
     except Exception as e:
         return Response({"error": str(e), "traceback": traceback.format_exc()}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class TasksList(APIView):
+    queryset = Task.objects.all()
+    serializer_class = TaskSerializer
+    permission_classes = [AllowAny]
+    ordering_fields = ['-created_at']
+    
+    def get(self, request):
+        try:
+            params_serializer = TaskListParamsSerializer(data=request.query_params)
+            params_serializer.is_valid(raise_exception=True)
+            start_date = params_serializer.validated_data.get('startDate')
+            end_date = params_serializer.validated_data.get('endDate')
+            page = params_serializer.validated_data.get('page')
+            page_size = params_serializer.validated_data.get('pageSize')
+            task_ids = params_serializer.validated_data.get('taskIds', [])
+            
+            query = Q()
+            if start_date:
+                query &= Q(created_at__gte=start_date)
+            if end_date:
+                query &= Q(created_at__lte=end_date)
+            if task_ids:
+                query &= Q(id__in=task_ids)
+            
+            queryset = self.queryset.filter(query).annotate(papers_count=Count('papers')).order_by('-papers_count')
+            paginator = Paginator(queryset, page_size)
+            paginated_queryset = paginator.page(page)
+            serializer = TaskSerializer(paginated_queryset, many=True)
+            return Response(serializer.data)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

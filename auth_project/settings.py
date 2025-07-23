@@ -28,6 +28,7 @@ SECRET_KEY = env.str('SECRET_KEY', default="django-insecure-lfa7$(r+vxjd7tq7-q77
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env.bool('DEBUG', default=True)
+DEBUG = True
 
 ALLOWED_HOSTS = env.str('ALLOWED_HOSTS', default='localhost,127.0.0.1,0.0.0.0,202.191.56.91,www.google.com').split(',')
 
@@ -113,10 +114,6 @@ DATABASES = {
     }
 }
 
-# No longer need database routers since we're using a single database
-# DATABASE_ROUTERS = ['auth_project.db_router.AuthRouter']
-
-
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 
@@ -169,6 +166,9 @@ CORS_ALLOWED_ORIGINS = [
     "https://staging-ai-research.hust.edu.vn",
     "http://be-staging-ai-research.hust.edu.vn",
     "https://be-staging-ai-research.hust.edu.vn",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://0.0.0.0:3000",
 ]
 
 # Allow all headers and methods in development
@@ -280,7 +280,7 @@ AZURE_OPENAI_API_VERSION = env.str('AZURE_OPENAI_API_VERSION', '2023-05-15')
 AZURE_OPENAI_DEPLOYMENT_NAME = env.str('AZURE_OPENAI_DEPLOYMENT_NAME', 'gpt-4')
 
 # Maximum upload file size (5MB)
-DATA_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
+DATA_UPLOAD_MAX_MEMORY_SIZE = None
 
 # Update URLs to serve media files in development
 if DEBUG:

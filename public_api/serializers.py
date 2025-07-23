@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from .models import Profile, Paper, Dataset, Publication, Journal, Conference
+from .models import Profile, Paper, Dataset, Publication, Journal, Conference, Task
+import json
 
 class ProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
@@ -25,12 +26,16 @@ class ConferenceSerializer(serializers.ModelSerializer):
 class PaperSerializer(serializers.ModelSerializer):
     journal_details = JournalSerializer(source='journal', read_only=True)
     conference_details = ConferenceSerializer(source='conference_venue', read_only=True)
+    tasks = serializers.SerializerMethodField()
     venue_type = serializers.ReadOnlyField()
     venue_name = serializers.ReadOnlyField()
     
     class Meta:
         model = Paper
         fields = '__all__'
+
+    def get_tasks(self, obj):
+        return obj.tasks.all().values_list('name', flat=True)
 
 class DatasetSerializer(serializers.ModelSerializer):
     class Meta:
@@ -43,7 +48,6 @@ class PublicationSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-### For papers apis
 class PaperListSerializer(serializers.ModelSerializer):
     year = serializers.SerializerMethodField()
     downloadUrl = serializers.SerializerMethodField()
@@ -98,6 +102,47 @@ class PaperListSerializer(serializers.ModelSerializer):
         else:
             return []
         
+class DatasetListSerializer(serializers.ModelSerializer):
+    downloadUrl = serializers.SerializerMethodField()
+    category = serializers.SerializerMethodField()
+    tasks = serializers.SerializerMethodField()
+    paperCount = serializers.SerializerMethodField()
+    benchmarks = serializers.SerializerMethodField()
+    class Meta:
+        model = Dataset
+        fields = ["id", "name", "abbreviation", "description", "downloadUrl", "language", "category", "tasks", "paperCount", "benchmarks"]
+
+    def get_downloadUrl(self, obj):
+        return obj.source_url
+    
+    def get_category(self, obj):
+        return obj.data_type
+    
+    def get_tasks(self, obj):
+        return obj.tasks.all().values_list('name', flat=True)
+
+    def get_paperCount(self, obj):
+        return obj.papers.count()
+
+    def get_benchmarks(self, obj):
+        benchmarks = []
+        if obj.benchmarks:
+            if isinstance(obj.benchmarks, list):
+                benchmarks = obj.benchmarks
+            elif isinstance(obj.benchmarks, int):
+                benchmarks = [{"placeholder": True} for _ in range(obj.benchmarks)]
+            elif isinstance(obj.benchmarks, str):
+                try:
+                    benchmarks = json.loads(obj.benchmarks)
+                except:
+                    try:
+                        benchmark_count = int(obj.benchmarks)
+                        benchmarks = [{"placeholder": True} for _ in range(benchmark_count)]
+                    except:
+                        benchmarks = []
+        return benchmarks
+
+
 class PaperDetailSerializer(PaperListSerializer):
     sourceCode = serializers.SerializerMethodField()
     citationsByYear = serializers.SerializerMethodField()
@@ -150,3 +195,21 @@ class PaperDetailSerializer(PaperListSerializer):
             return obj.github_url
         else:
             return None
+
+
+class TaskSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Task
+        fields = '__all__'
+
+
+class TaskListParamsSerializer(serializers.ModelSerializer):
+    startDate = serializers.DateField(required=False)
+    endDate = serializers.DateField(required=False)
+    period = serializers.ChoiceField(choices=['day', 'week', 'month', 'year'], required=False)
+    page = serializers.IntegerField(default=1, required=False)
+    pageSize = serializers.IntegerField(default=20, required=False)
+    
+    class Meta:
+        model = Task
+        fields = ['startDate', 'endDate', 'period', 'page', 'pageSize']

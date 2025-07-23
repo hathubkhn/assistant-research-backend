@@ -19,7 +19,7 @@ from django.urls import path, include
 from django.views.generic import RedirectView
 from django.conf import settings
 from django.conf.urls.static import static
-from public_api import views as public_api_views
+from public_api.views import views as public_api_views
 
 
 
@@ -55,7 +55,6 @@ api_patterns = [
     
     path('venues/counts/', public_api_views.venues_counts, name='api-venues-counts'),
     
-    path('datasets/', public_api_views.datasets_list, name='api-datasets-list'),
     path('datasets/<uuid:dataset_id>/', public_api_views.dataset_detail, name='api-dataset-detail'),
     path('datasets/by-slug/<str:slug>/', public_api_views.dataset_by_slug, name='api-dataset-by-slug'),
     path('datasets/interesting/', public_api_views.interesting_datasets, name='api-interesting-datasets'),
