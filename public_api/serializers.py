@@ -1,51 +1,81 @@
-from rest_framework import serializers
-from .models import Profile, Paper, Dataset, Publication, Journal, Conference, Task
 import json
 
+from rest_framework import serializers
+
+from .models import (
+    Conference,
+    Dataset,
+    InterestingDataset,
+    Journal,
+    Paper,
+    Profile,
+    Publication,
+    Task,
+)
+
+
 class ProfileSerializer(serializers.ModelSerializer):
-    username = serializers.CharField(source='user.username', read_only=True)
-    email = serializers.EmailField(source='user.email', read_only=True)
-    
+    username = serializers.CharField(source="user.username", read_only=True)
+    email = serializers.EmailField(source="user.email", read_only=True)
+
     class Meta:
         model = Profile
-        fields = ['id', 'username', 'email', 'full_name', 'faculty_institute', 'school', 
-                 'position', 'google_scholar_link', 'bio', 'research_interests', 
-                 'additional_keywords', 'avatar_url', 'is_profile_completed', 
-                 'created_at', 'updated_at']
+        fields = [
+            "id",
+            "username",
+            "email",
+            "full_name",
+            "faculty_institute",
+            "school",
+            "position",
+            "google_scholar_link",
+            "bio",
+            "research_interests",
+            "additional_keywords",
+            "avatar_url",
+            "is_profile_completed",
+            "created_at",
+            "updated_at",
+        ]
+
 
 class JournalSerializer(serializers.ModelSerializer):
     class Meta:
         model = Journal
-        fields = '__all__'
+        fields = "__all__"
+
 
 class ConferenceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Conference
-        fields = '__all__'
+        fields = "__all__"
+
 
 class PaperSerializer(serializers.ModelSerializer):
-    journal_details = JournalSerializer(source='journal', read_only=True)
-    conference_details = ConferenceSerializer(source='conference_venue', read_only=True)
+    journal_details = JournalSerializer(source="journal", read_only=True)
+    conference_details = ConferenceSerializer(source="conference_venue", read_only=True)
     tasks = serializers.SerializerMethodField()
     venue_type = serializers.ReadOnlyField()
     venue_name = serializers.ReadOnlyField()
-    
+
     class Meta:
         model = Paper
-        fields = '__all__'
+        fields = "__all__"
 
     def get_tasks(self, obj):
-        return obj.tasks.all().values_list('name', flat=True)
+        return obj.tasks.all().values_list("name", flat=True)
+
 
 class DatasetSerializer(serializers.ModelSerializer):
     class Meta:
         model = Dataset
-        fields = '__all__'
+        fields = "__all__"
+
 
 class PublicationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Publication
-        fields = '__all__'
+        fields = "__all__"
 
 
 class PaperListSerializer(serializers.ModelSerializer):
@@ -57,69 +87,101 @@ class PaperListSerializer(serializers.ModelSerializer):
     impactFactor = serializers.SerializerMethodField()
     quartile = serializers.SerializerMethodField()
     keywords = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = Paper
-        fields = ['id', 'title', 'authors', 'venue', 'venueType', 
-                  'year', 'keywords', 'abstract', 'downloadUrl',
-                  'impactFactor', 'quartile']
+        fields = [
+            "id",
+            "title",
+            "authors",
+            "venue",
+            "venueType",
+            "year",
+            "keywords",
+            "abstract",
+            "downloadUrl",
+            "impactFactor",
+            "quartile",
+        ]
 
     def get_authors(self, obj):
-        authors_list = obj.authors.values_list('name', flat=True)
+        authors_list = obj.authors.values_list("name", flat=True)
         authors_list = list(authors_list)
         if len(authors_list) > 0:
             return authors_list
         else:
             return ["Unknown"]
-    
+
     def get_downloadUrl(self, obj):
         return obj.pdf_url
 
     def get_year(self, obj):
         return obj.publication_date.year if obj.publication_date else None
-    
+
     def get_venueType(self, obj):
         return obj.venue_type
-    
+
     def get_venue(self, obj):
         return obj.venue_name
 
     def get_impactFactor(self, obj):
-        if obj.venue_type == 'journal' and obj.journal:
+        if obj.venue_type == "journal" and obj.journal:
             return obj.journal.impact_factor
         else:
             return None
-    
+
     def get_quartile(self, obj):
-        if obj.venue_type == 'journal' and obj.journal:
+        if obj.venue_type == "journal" and obj.journal:
             return obj.journal.quartile
         else:
             return None
-        
+
     def get_keywords(self, obj):
         if obj.keywords:
             return obj.keywords
         else:
             return []
-        
+
+
 class DatasetListSerializer(serializers.ModelSerializer):
     downloadUrl = serializers.SerializerMethodField()
     category = serializers.SerializerMethodField()
     tasks = serializers.SerializerMethodField()
     paperCount = serializers.SerializerMethodField()
     benchmarks = serializers.SerializerMethodField()
+    isStarred = serializers.SerializerMethodField()
+
     class Meta:
         model = Dataset
-        fields = ["id", "name", "abbreviation", "description", "downloadUrl", "language", "category", "tasks", "paperCount", "benchmarks"]
+        fields = [
+            "id",
+            "name",
+            "abbreviation",
+            "description",
+            "downloadUrl",
+            "language",
+            "category",
+            "tasks",
+            "paperCount",
+            "benchmarks",
+            "link",
+            "paper_link",
+            "subtitle",
+            "thumbnailUrl",
+            "dataloaders",
+            "created_at",
+            "updated_at",
+            "isStarred",
+        ]
 
     def get_downloadUrl(self, obj):
         return obj.source_url
-    
+
     def get_category(self, obj):
         return obj.data_type
-    
+
     def get_tasks(self, obj):
-        return obj.tasks.all().values_list('name', flat=True)
+        return obj.tasks.all().values_list("name", flat=True)
 
     def get_paperCount(self, obj):
         return obj.papers.count()
@@ -137,10 +199,19 @@ class DatasetListSerializer(serializers.ModelSerializer):
                 except:
                     try:
                         benchmark_count = int(obj.benchmarks)
-                        benchmarks = [{"placeholder": True} for _ in range(benchmark_count)]
+                        benchmarks = [
+                            {"placeholder": True} for _ in range(benchmark_count)
+                        ]
                     except:
                         benchmarks = []
         return benchmarks
+
+    def get_isStarred(self, obj):
+        if self.context.get("request").user.is_authenticated:
+            return InterestingDataset.objects.filter(
+                user=self.context.get("request").user, dataset=obj
+            ).exists()
+        return False
 
 
 class PaperDetailSerializer(PaperListSerializer):
@@ -148,44 +219,63 @@ class PaperDetailSerializer(PaperListSerializer):
     citationsByYear = serializers.SerializerMethodField()
     conferenceRank = serializers.SerializerMethodField()
     conferenceAbbreviation = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = Paper
-        fields = ['id', 'title', 'authors', 'venue', 'venueType', 
-                  'year', 'keywords', 'abstract', 'downloadUrl',
-                  'impactFactor', 'quartile', 'citationsByYear',
-                  'doi', 'method', 'results', 'conclusions', 'bibtex', 
-                  'sourceCode', 'conferenceRank', 'conferenceAbbreviation',
-                  'datasets']
-    
+        fields = [
+            "id",
+            "title",
+            "authors",
+            "venue",
+            "venueType",
+            "year",
+            "keywords",
+            "abstract",
+            "downloadUrl",
+            "impactFactor",
+            "quartile",
+            "citationsByYear",
+            "doi",
+            "method",
+            "results",
+            "conclusions",
+            "bibtex",
+            "sourceCode",
+            "conferenceRank",
+            "conferenceAbbreviation",
+            "datasets",
+        ]
+
     def get_citationsByYear(self, obj):
         return obj.citations_count
-    
+
     def get_datasets(self, obj):
         datasets = obj.datasets.all()
         datasets_list = []
         for dataset in datasets:
-            datasets_list.append({
-                "id": dataset.id,
-                "name": dataset.name,
-                "abbreviation": dataset.abbreviation,
-                "description": dataset.description,
-                "data_type": dataset.data_type,
-                "category": dataset.tasks.all().values_list('name', flat=True),
-                "size": dataset.size,
-                "format": dataset.format,
-                "source_url": dataset.source_url,
-                "license": dataset.license,
-            })
-    
+            datasets_list.append(
+                {
+                    "id": dataset.id,
+                    "name": dataset.name,
+                    "abbreviation": dataset.abbreviation,
+                    "description": dataset.description,
+                    "data_type": dataset.data_type,
+                    "category": dataset.tasks.all().values_list("name", flat=True),
+                    "size": dataset.size,
+                    "format": dataset.format,
+                    "source_url": dataset.source_url,
+                    "license": dataset.license,
+                }
+            )
+
     def get_conferenceRank(self, obj):
-        if obj.venue_type == 'conference' and obj.conference:
+        if obj.venue_type == "conference" and obj.conference:
             return obj.conference.rank
         else:
             return None
-    
+
     def get_conferenceAbbreviation(self, obj):
-        if obj.venue_type == 'conference' and obj.conference:
+        if obj.venue_type == "conference" and obj.conference:
             return obj.conference.abbreviation
         else:
             return None
@@ -200,16 +290,74 @@ class PaperDetailSerializer(PaperListSerializer):
 class TaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = Task
-        fields = '__all__'
+        fields = "__all__"
 
 
 class TaskListParamsSerializer(serializers.ModelSerializer):
     startDate = serializers.DateField(required=False)
     endDate = serializers.DateField(required=False)
-    period = serializers.ChoiceField(choices=['day', 'week', 'month', 'year'], required=False)
+    period = serializers.ChoiceField(
+        choices=["day", "week", "month", "year"], required=False
+    )
     page = serializers.IntegerField(default=1, required=False)
     pageSize = serializers.IntegerField(default=20, required=False)
-    
+
     class Meta:
         model = Task
-        fields = ['startDate', 'endDate', 'period', 'page', 'pageSize']
+        fields = ["startDate", "endDate", "period", "page", "pageSize"]
+
+
+class InterestingDatasetsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InterestingDataset
+        fields = "__all__"
+
+
+class ConferenceListSerializer(serializers.ModelSerializer):
+    papersCount = serializers.SerializerMethodField()
+    class Meta:
+        model = Conference
+        fields = [
+            "id",
+            "name",
+            "abbreviation",
+            "rank",
+            "location",
+            "url",
+            "papersCount"
+        ]
+
+    def get_papersCount(self, obj):
+        return obj.papers.count()
+    
+
+class ConferenceDetailSerializer(serializers.ModelSerializer):
+    papersCount = serializers.SerializerMethodField()
+    papers = serializers.SerializerMethodField()
+    class Meta:
+        model = Conference
+        fields = [
+            "id",
+            "name",
+            "abbreviation",
+            "rank",
+            "location",
+            "url",
+            "papersCount",
+            "papers",
+            "created_at"
+        ]
+
+    def get_papersCount(self, obj):
+        return obj.papers.count()
+
+    def get_papers(self, obj):
+        papers = obj.papers.all()
+        papers_info = papers.values_list("id", "title", "publication_date", "authors")
+        papers_info = [{
+            "id": paper[0],
+            "title": paper[1],
+            "publication_date": paper[2],
+            "authors": paper[3],
+        } for paper in papers_info]
+        return papers_info

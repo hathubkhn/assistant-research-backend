@@ -36,3 +36,5 @@ urlpatterns = [
     path('research/datasets/<str:pk>/', views.DatasetDetailView.as_view(), name='dataset-detail'),
     path('research/datasets/<str:dataset_id>/papers/', views.DatasetPapersView.as_view(), name='dataset-papers'),
 ] 
+
+urlpatterns = []

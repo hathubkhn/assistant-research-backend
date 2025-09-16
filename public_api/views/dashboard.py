@@ -24,146 +24,52 @@ class Dashboard(APIView):
                 "paper_count": paper_count,
                 "dataset_count": dataset_count,
             }
-
+            
+            start = datetime.strptime(start_date, '%Y-%m-%d').date()
+            end = datetime.strptime(end_date, '%Y-%m-%d').date()
+            annotation_func, order_by_field = None, None
             if period == 'daily':
-                papers_per_day = Paper.objects.filter(
-                    created_at__gte=start_date, 
-                    created_at__lte=end_date
-                ).annotate(
-                    date=TruncDate('created_at')
-                ).values('date').annotate(
-                    count=Count('id')
-                ).order_by('date')
-                
-                start = datetime.strptime(start_date, '%Y-%m-%d').date()
-                end = datetime.strptime(end_date, '%Y-%m-%d').date()
-                date_range = [(start + timedelta(days=x)) for x in range((end - start).days + 1)]
-                
-                paper_count_details = []
-                for date in date_range:
-                    count = next((p["count"] for p in papers_per_day if p["date"] == date), 0)
-                    paper_count_details.append({
-                        "period": {
-                            "start": str(date),
-                            "end": str(date)
-                        },
-                        "count": count
-                    })
-                
-                response_data.update({
-                    "paper_count_detail": paper_count_details
-                })
-                
+                annotation_func = TruncDate('created_at')
+                order_by_field = 'date'
+                time_range = [(start + timedelta(days=x)) for x in range((end - start).days + 1)]
             elif period == 'weekly':
-                papers_per_week = Paper.objects.filter(
-                    created_at__gte=start_date, 
-                    created_at__lte=end_date
-                ).annotate(
-                    week=TruncWeek('created_at')
-                ).values('week').annotate(
-                    count=Count('id')
-                ).order_by('week')
-                
-                start = datetime.strptime(start_date, '%Y-%m-%d').date()
-                end = datetime.strptime(end_date, '%Y-%m-%d').date()
-                
-                week_range = []
-                current = start - timedelta(days=start.weekday())
-                while current <= end:
-                    week_range.append(current)
-                    current += timedelta(weeks=1)
-                
-                paper_count_details = []
-                for week_start in week_range:
-                    week_end = week_start + timedelta(days=6)
-                    count = next((p["count"] for p in papers_per_week if p["week"].date() == week_start), 0)
-                    paper_count_details.append({
-                        "period": {
-                            "start": str(week_start),
-                            "end": str(week_end)
-                        },
-                        "count": count
-                    })
-                
-                response_data.update({
-                    "paper_count_detail": paper_count_details
-                })
+                annotation_func = TruncWeek('created_at')
+                order_by_field = 'week'
+                time_range = [(start + timedelta(weeks=x)) for x in range((end - start).weeks + 1)]
             elif period == 'monthly':
-                papers_per_month = Paper.objects.filter(
-                    created_at__gte=start_date, 
-                    created_at__lte=end_date
-                ).annotate(
-                    month=TruncMonth('created_at')
-                ).values('month').annotate(
-                    count=Count('id')
-                ).order_by('month')
-                
-                start = datetime.strptime(start_date, '%Y-%m-%d').date()
-                end = datetime.strptime(end_date, '%Y-%m-%d').date()
-                
-                month_range = []
-                current = datetime(start.year, start.month, 1).date()
-                while current <= end:
-                    month_range.append(current)
-                    if current.month == 12:
-                        current = datetime(current.year + 1, 1, 1).date()
-                    else:
-                        current = datetime(current.year, current.month + 1, 1).date()
-                
-                paper_count_details = []
-                for month_start in month_range:
-                    if month_start.month == 12:
-                        month_end = datetime(month_start.year + 1, 1, 1).date() - timedelta(days=1)
-                    else:
-                        month_end = datetime(month_start.year, month_start.month + 1, 1).date() - timedelta(days=1)
-                    
-                    count = next((p["count"] for p in papers_per_month if p["month"].date().replace(day=1) == month_start), 0)
-                    paper_count_details.append({
-                        "period": {
-                            "start": str(month_start),
-                            "end": str(month_end)
-                        },
-                        "count": count
-                    })
-                
-                response_data.update({
-                    "paper_count_detail": paper_count_details
-                })
+                annotation_func = TruncMonth('created_at')
+                order_by_field = 'month'
+                time_range = [(start + timedelta(months=x)) for x in range((end - start).months + 1)]
             elif period == 'yearly':
-                papers_per_year = Paper.objects.filter(
-                    created_at__gte=start_date, 
-                    created_at__lte=end_date
-                ).annotate(
-                    year=TruncYear('created_at')
-                ).values('year').annotate(
-                    count=Count('id')
-                ).order_by('year')
-                
-                start = datetime.strptime(start_date, '%Y-%m-%d').date()
-                end = datetime.strptime(end_date, '%Y-%m-%d').date()
-                
-                year_range = range(start.year, end.year + 1)
-                
-                paper_count_details = []
-                for year in year_range:
-                    year_start = datetime(year, 1, 1).date()
-                    year_end = datetime(year, 12, 31).date()
-                    
-                    count = next((p["count"] for p in papers_per_year if p["year"].date().replace(day=1, month=1) == year_start), 0)
-                    paper_count_details.append({
-                        "period": {
-                            "start": str(year_start),
-                            "end": str(year_end)
-                        },
-                        "count": count
-                    })
-                
-                response_data.update({
-                    "paper_count_detail": paper_count_details
-                })
+                annotation_func = TruncYear('created_at')
+                order_by_field = 'year'
+                time_range = [(start + timedelta(years=x)) for x in range((end - start).years + 1)]
             else:
                 return Response({"error": "Invalid period"}, status=status.HTTP_400_BAD_REQUEST)
             
+            papers_per_period = Paper.objects.filter(
+                created_at__gte=start_date, 
+                created_at__lte=end_date
+            ).annotate(
+                date=annotation_func
+            ).values('date').annotate(
+                count=Count('id')
+            ).order_by(order_by_field)
+            paper_count_details = []
+            for date in time_range:
+                count = next((p["count"] for p in papers_per_period if p["date"] == date), 0)
+                paper_count_details.append({
+                    "period": {
+                        "start": str(date),
+                        "end": str(date)
+                    },
+                    "count": count
+                })
+            
+            response_data.update({
+                "paper_count_detail": paper_count_details
+            })
+
             papers_per_dataset = Dataset.objects.annotate(
                 filtered_paper_count=Count(
                     'papers', 

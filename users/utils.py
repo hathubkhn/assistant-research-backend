@@ -4,8 +4,8 @@ import io
 import PyPDF2
 import openai
 from django.conf import settings
+import json
 
-# Configure Azure OpenAI API
 openai.api_type = "azure"
 openai.api_key = settings.AZURE_OPENAI_API_KEY
 openai.api_base = settings.AZURE_OPENAI_ENDPOINT
@@ -22,13 +22,10 @@ def extract_text_from_pdf(file):
         str: Extracted text from the PDF
     """
     try:
-        # Create a PDF reader object using PyPDF2
         pdf_reader = PyPDF2.PdfReader(io.BytesIO(file.read()))
         
-        # Get the total number of pages
         num_pages = len(pdf_reader.pages)
         
-        # Extract text from all pages (limit to first 20 pages for large PDFs)
         max_pages = min(num_pages, 20)
         text = ""
         
@@ -36,7 +33,6 @@ def extract_text_from_pdf(file):
             page = pdf_reader.pages[page_num]
             text += page.extract_text() + "\n\n"
         
-        # Reset file pointer
         file.seek(0)
         
         return text
@@ -55,7 +51,6 @@ def extract_metadata_with_openai(text, filename):
     Returns:
         dict: Extracted metadata including title, authors, etc.
     """
-    # Default metadata
     default_metadata = {
         "title": os.path.splitext(filename)[0].replace("_", " "),
         "authors": [],
@@ -72,11 +67,9 @@ def extract_metadata_with_openai(text, filename):
     if not text or len(text.strip()) < 50:
         return default_metadata
     
-    # Prepare a sample of the text (first 10000 characters should be enough)
     text_sample = text[:10000]
     
     try:
-        # Create the prompt for OpenAI
         prompt = f"""
 Extract the following metadata from this research paper:
 1. Title
@@ -110,27 +103,21 @@ Respond in the following JSON format only, without any additional text or explan
 }}
 """
 
-        # Call Azure OpenAI API
         response = openai.chat.completions.create(
-            model=settings.AZURE_OPENAI_DEPLOYMENT_NAME,  # Use the Azure deployment name
+            model=settings.AZURE_OPENAI_DEPLOYMENT_NAME,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.1,
             max_tokens=1000
         )
         
-        # Extract the response content
         result = response.choices[0].message.content.strip()
         
-        # Find JSON in the response
         json_match = re.search(r'({[\s\S]*})', result)
         if json_match:
             result = json_match.group(1)
         
-        # Parse JSON
-        import json
         metadata = json.loads(result)
         
-        # Validate and fill in any missing fields with defaults
         for key, default_value in default_metadata.items():
             if key not in metadata or metadata[key] is None:
                 metadata[key] = default_value
