@@ -46,16 +46,12 @@ from .views.general import (
     ResearchAssistant,
 )
 
-# URL patterns organized by functionality
 urlpatterns = [
-    # Dashboard and Analytics
     path("dashboard/", Dashboard.as_view(), name="public-dashboard"),
     path("task-paper-analytics/", TaskPaperAnalytics.as_view(), name="task-paper-analytics"),
     
-    # Search
     path('search/', SearchView.as_view(), name='api-search'),
     
-    # Papers
     path("papers/", PapersList.as_view(), name="public-papers-list"),
     path('papers/<uuid:paper_id>/', PaperDetailView.as_view(), name='api-paper-detail'),
     path('papers/by-slug/<str:slug>/', PaperBySlugView.as_view(), name='api-paper-by-slug'),
@@ -66,35 +62,28 @@ urlpatterns = [
     path('papers/<uuid:paper_id>/unmark-downloaded/', UnmarkPaperDownloaded.as_view(), name='api-unmark-paper-downloaded'),
     path('papers/upload/', UploadPaper.as_view(), name='api-upload-paper'),
     
-    # Datasets
     path("datasets/", DatasetsList.as_view(), name="public-datasets-list"),
     path('datasets/<uuid:dataset_id>/', DatasetDetail.as_view(), name='api-dataset-detail'),
     path('datasets/interesting/', InterestingDatasets.as_view(), name='api-interesting-datasets'),
     path('datasets/mark-interesting/<uuid:dataset_id>/', MarkDatasetInteresting.as_view(), name='api-mark-dataset-interesting'),
     path('datasets/<uuid:dataset_id>/unmark-interesting/', UnmarkDatasetInteresting.as_view(), name='api-unmark-dataset-interesting'),
     
-    # Journals
     path("journals/", JournalsList.as_view(), name="api-journals-list"),
     path("journals/<uuid:journal_id>/", JournalDetailView.as_view(), name="api-journal-detail"),
     
-    # Conferences
     path("conferences/", ConferencesList.as_view(), name="api-conferences-list"),
     path("conferences/<uuid:conference_id>/", ConferenceDetail.as_view(), name="api-conference-detail"),
     
-    # Keywords and Tasks
     path("keywords/", ListKeywordsView.as_view(), name="api-keywords-list"),
     path("tasks/", TasksList.as_view(), name="public-tasks-list"),
     
-    # User Profile and Authentication
     path('profile/', GetProfile.as_view(), name='api-get-profile'),
     path('profile/update/', UpdateProfile.as_view(), name='api-update-profile'),
     path('profile/avatar/', UpdateAvatar.as_view(), name='api-update-avatar'),
     
-    # Publications
     path('publications/', PublicationsList.as_view(), name='api-publications-list'),
     path('publications/<uuid:publication_id>/', PublicationDetail.as_view(), name='api-publication-detail'),
     
-    # Authentication
     path('register/', Register.as_view(), name='api-register'),
     path('token-login/', TokenLogin.as_view(), name='api-token-login'),
     path('auth/google/callback/', GoogleCallback.as_view(), name='api-google-callback'),
@@ -109,12 +98,7 @@ urlpatterns = [
     path('stats/datasets/', DatasetsStats.as_view(), name='api-datasets-stats'),
     path('stats/home/', HomeStats.as_view(), name='api-home-stats'),
     
-    # Venues
     path('venues/counts/', VenuesCounts.as_view(), name='api-venues-counts'),
-    
-    # User Library
     path('my-library/', MyLibrary.as_view(), name='api-my-library'),
-    
-    # Research Assistant
     path('research-assistant/query/', ResearchAssistant.as_view(), name='api-research-assistant-query'),
 ]
