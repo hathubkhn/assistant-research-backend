@@ -299,3 +299,27 @@ CSRF_TRUSTED_ORIGINS = [env.str('FRONTEND_URL', default='http://localhost:3000')
 
 
 PAPER_PDF_DIR='papers'
+
+# LOGGING = {
+#     'version': 1,
+#     'disable_existing_loggers': False,
+#     'handlers': {
+#         'console': {
+#             'class': 'logging.StreamHandler',
+#         },
+#     },
+#     'loggers': {
+#         'public_api.profiling_utils': {
+#             'handlers': ['console'],
+#             'level': 'INFO',
+#         },
+#         'public_api.middleware': {
+#             'handlers': ['console'],
+#             'level': 'INFO',
+#         },
+#         'public_api.query_profiling': {
+#             'handlers': ['console'],
+#             'level': 'INFO',
+#         },
+#     },
+# }

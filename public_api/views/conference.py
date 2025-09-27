@@ -39,7 +39,6 @@ class ConferencesList(APIView):
         serializer = ConferenceListSerializer(paginated_conferences, many=True)
         result = serializer.data
 
-
         response_data = {
             "results": result,
             "pagination": {

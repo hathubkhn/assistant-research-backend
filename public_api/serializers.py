@@ -122,7 +122,23 @@ class PaperListSerializer(serializers.ModelSerializer):
         return obj.venue_type
 
     def get_venue(self, obj):
-        return obj.venue_name
+        if obj.journal is not None:
+            return {
+                "id": obj.journal.id,
+                "name": obj.journal.name,
+                "abbreviation": obj.journal.abbreviation,
+                "impactFactor": obj.journal.impact_factor,
+                "rank": obj.journal.quartile,
+            }
+        elif obj.conference is not None:
+            return {
+                "id": obj.conference.id,
+                "name": obj.conference.name,
+                "abbreviation": obj.conference.abbreviation,
+                "rank": obj.conference.rank,
+            }
+        else:
+            return None
 
     def get_impactFactor(self, obj):
         if obj.venue_type == "journal" and obj.journal:

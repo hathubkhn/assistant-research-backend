@@ -77,12 +77,9 @@ class PapersList(APIView):
         if end_date:
             end_date = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
             filter_criteria["crawled_at__lte"] = end_date
-
         papers = queryset.filter(**filter_criteria).order_by(self.ordering_fields[0])
-
         paginator = Paginator(papers, page_size)
         paginated_papers = paginator.page(page)
-
         serializer = PaperListSerializer(paginated_papers, many=True)
         result = serializer.data
 
@@ -95,6 +92,7 @@ class PapersList(APIView):
                 "totalPages": paginator.num_pages,
             },
         }
+        
         return Response(response_data)
 
 

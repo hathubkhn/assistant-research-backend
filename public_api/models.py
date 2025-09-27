@@ -21,6 +21,10 @@ class Profile(models.Model):
 
     class Meta:
         db_table = "user_profile"
+        indexes = [
+            models.Index(fields=['id']),
+            models.Index(fields=['-created_at']),
+        ]
 
 class Journal(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -35,6 +39,11 @@ class Journal(models.Model):
 
     class Meta:
         db_table = "journal"
+        indexes = [
+            models.Index(fields=['id']),
+            models.Index(fields=['name']),
+            models.Index(fields=['-created_at']),
+        ]
 
 class Conference(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -47,6 +56,12 @@ class Conference(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        indexes = [
+            models.Index(fields=['id']),
+            models.Index(fields=['name']),
+            models.Index(fields=['rank']),
+            models.Index(fields=['-created_at']),
+        ]
         db_table = "conference"
 
 class Paper(models.Model):
@@ -93,6 +108,9 @@ class Paper(models.Model):
     class Meta:
         db_table = 'papers'
         indexes = [
+            models.Index(fields=['id']),
+            models.Index(fields=['conference']),
+            models.Index(fields=['journal']),
             models.Index(fields=['-publication_date']),
             models.Index(fields=['title'])
         ]
@@ -103,11 +121,7 @@ class Paper(models.Model):
             return "journal"
         elif self.conference is not None:
             return "conference"
-        # Fallback for legacy data
-        elif self.conference in Journal.objects.values_list('name', flat=True):
-            return "journal"
-        else:
-            return "conference"
+        return None
             
     @property
     def venue_name(self):

@@ -80,14 +80,18 @@ from django.conf.urls.static import static
 # ]
 
 
-urlpatterns = [
-    path('', RedirectView.as_view(url='/api/login/'), name='home'),
-    path('api/', include('public_api.urls')),
-    path('accounts/', include('allauth.urls')),
-    path('accounts/google/login/', include('allauth.socialaccount.providers.google.urls')),
-    path('accounts/microsoft/login/', include('allauth.socialaccount.providers.microsoft.urls')),
-]
+# urlpatterns = [
+#     path('', RedirectView.as_view(url='/api/login/'), name='home'),
+#     path('api/', include('public_api.urls')),
+#     path('accounts/', include('allauth.urls')),
+#     path('accounts/google/login/', include('allauth.socialaccount.providers.google.urls')),
+#     path('accounts/microsoft/login/', include('allauth.socialaccount.providers.microsoft.urls')),
+# ]
 
-# Serve media files in development
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# # Serve media files in development
+# if settings.DEBUG:
+#     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+urlpatterns = [
+    path('api/', include('public_api.urls')),
+]
