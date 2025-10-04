@@ -231,6 +231,7 @@ class DatasetListSerializer(serializers.ModelSerializer):
 
 
 class PaperDetailSerializer(PaperListSerializer):
+    datasets = serializers.SerializerMethodField()
     sourceCode = serializers.SerializerMethodField()
     citationsByYear = serializers.SerializerMethodField()
     conferenceRank = serializers.SerializerMethodField()
@@ -283,6 +284,7 @@ class PaperDetailSerializer(PaperListSerializer):
                     "license": dataset.license,
                 }
             )
+        return datasets_list
 
     def get_conferenceRank(self, obj):
         if obj.venue_type == "conference" and obj.conference:
