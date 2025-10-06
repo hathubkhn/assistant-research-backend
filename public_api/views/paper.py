@@ -114,7 +114,7 @@ class StarPaperView(APIView):
 class UnstarPaperView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, paper_id):
+    def delete(self, request, paper_id):
         user = request.user
         interesting = InterestingPaper.objects.get(user=user, paper__id=paper_id)
         interesting.delete()
