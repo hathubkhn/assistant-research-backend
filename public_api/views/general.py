@@ -12,6 +12,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 import requests
 from rest_framework import status
+from rest_framework.authentication import TokenAuthentication
 from rest_framework.authtoken.models import Token
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -19,7 +20,6 @@ from rest_framework.views import APIView
 
 from users.utils import extract_metadata_with_openai, extract_text_from_pdf
 
-from ..authentication import AllowAnyAuthentication
 from ..models import (
     Conference,
     Dataset,
@@ -43,7 +43,7 @@ User = get_user_model()
 
 class SearchView(APIView):
     permission_classes = [AllowAny]
-    authentication_classes = [AllowAnyAuthentication]
+    authentication_classes = []
 
     def get(self, request):
         query = request.query_params.get("q", "")
@@ -141,7 +141,7 @@ class SearchView(APIView):
 
 class GetProfile(APIView):
     permission_classes = [IsAuthenticated]
-    authentication_classes = [AllowAnyAuthentication]
+    authentication_classes = [TokenAuthentication]
 
     def get(self, request):
         profile = Profile.objects.get(user=request.user)
@@ -160,7 +160,7 @@ class GetProfile(APIView):
 
 class UpdateProfile(APIView):
     permission_classes = [IsAuthenticated]
-    authentication_classes = [AllowAnyAuthentication]
+    authentication_classes = [TokenAuthentication]
 
     def patch(self, request):
         user = request.user
@@ -185,7 +185,7 @@ class UpdateProfile(APIView):
 
 class PublicationsList(APIView):
     permission_classes = [IsAuthenticated]
-    authentication_classes = [AllowAnyAuthentication]
+    authentication_classes = []
 
     def get(self, request):
         user = request.user
@@ -204,7 +204,7 @@ class PublicationsList(APIView):
 
 class PublicationDetail(APIView):
     permission_classes = [IsAuthenticated]
-    authentication_classes = [AllowAnyAuthentication]
+    authentication_classes = [TokenAuthentication]
 
     def get(self, request, publication_id):
         user = request.user
@@ -268,7 +268,7 @@ class PublicationDetail(APIView):
 
 class Stats(APIView):
     permission_classes = [AllowAny]
-    authentication_classes = [AllowAnyAuthentication]
+    authentication_classes = []
 
     def get(self, request):
         total_papers = Paper.objects.count()
@@ -301,7 +301,7 @@ class Stats(APIView):
 
 class DashboardStats(APIView):
     permission_classes = [AllowAny]
-    authentication_classes = [AllowAnyAuthentication]
+    authentication_classes = []
 
     def get(self, request):
         user = request.user if request.user.is_authenticated else None
@@ -421,7 +421,7 @@ class DashboardStats(APIView):
 
 class PapersStats(APIView):
     permission_classes = [AllowAny]
-    authentication_classes = [AllowAnyAuthentication]
+    authentication_classes = []
 
     def get(self, request):
         # Get user for created_by filter if authenticated
@@ -486,7 +486,7 @@ class PapersStats(APIView):
 
 class KeywordsStats(APIView):
     permission_classes = [AllowAny]
-    authentication_classes = [AllowAnyAuthentication]
+    authentication_classes = []
 
     def get(self, request):
         user = request.user if request.user.is_authenticated else None
@@ -616,7 +616,7 @@ class KeywordsStats(APIView):
 
 class DatasetsStats(APIView):
     permission_classes = [AllowAny]
-    authentication_classes = [AllowAnyAuthentication]
+    authentication_classes = []
 
     def get(self, request):
         user = request.user if request.user.is_authenticated else None
@@ -712,7 +712,7 @@ class DatasetsStats(APIView):
 
 class Register(APIView):
     permission_classes = [AllowAny]
-    authentication_classes = [AllowAnyAuthentication]
+    authentication_classes = []
 
     def post(self, request):
         username = request.data.get("username")
@@ -749,7 +749,7 @@ class Register(APIView):
 
 class TokenLogin(APIView):
     permission_classes = [AllowAny]
-    authentication_classes = [AllowAnyAuthentication]
+    authentication_classes = []
 
     def post(self, request):
         username = request.data.get("username")
@@ -786,7 +786,7 @@ class TokenLogin(APIView):
 
 class GoogleCallback(APIView):
     permission_classes = [AllowAny]
-    authentication_classes = [AllowAnyAuthentication]
+    authentication_classes = []
 
     def post(self, request):
         code = request.data.get("code")
@@ -879,7 +879,7 @@ class GoogleCallback(APIView):
 
 class MicrosoftCallback(APIView):
     permission_classes = [AllowAny]
-    authentication_classes = [AllowAnyAuthentication]
+    authentication_classes = []
 
     def post(self, request):
         code = request.data.get("code")
@@ -969,7 +969,7 @@ class MicrosoftCallback(APIView):
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
-    authentication_classes = [AllowAnyAuthentication]
+    authentication_classes = []
 
     def get(self, request):
         google_login_url = f"https://accounts.google.com/o/oauth2/auth"
@@ -994,7 +994,7 @@ class LoginView(APIView):
 
 class UpdateAvatar(APIView):
     permission_classes = [IsAuthenticated]
-    authentication_classes = [AllowAnyAuthentication]
+    authentication_classes = [TokenAuthentication]
 
     def post(self, request):
         user = request.user
@@ -1031,6 +1031,7 @@ class UpdateAvatar(APIView):
 
 class VenuesCounts(APIView):
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     def get(self, request):
         conferences_count = Conference.objects.count()
@@ -1044,6 +1045,7 @@ class VenuesCounts(APIView):
 
 class HomeStats(APIView):
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     def get(self, request):
         total_papers = Paper.objects.count()
@@ -1066,6 +1068,7 @@ class HomeStats(APIView):
 
 class MyLibrary(APIView):
     permission_classes = [IsAuthenticated]
+    authentication_classes = [TokenAuthentication]
 
     def get(self, request):
         section = request.query_params.get("section", "interesting")
@@ -1174,7 +1177,7 @@ class MyLibrary(APIView):
 
 class UploadPaper(APIView):
     permission_classes = [IsAuthenticated]
-    authentication_classes = [AllowAnyAuthentication]
+    authentication_classes = [TokenAuthentication]
 
     def post(self, request):
         """
@@ -1255,7 +1258,7 @@ class UploadPaper(APIView):
 
 class ResearchAssistant(APIView):
     permission_classes = [AllowAny]
-    authentication_classes = [AllowAnyAuthentication]
+    authentication_classes = []
 
     def post(self, request):
         data = request.data
