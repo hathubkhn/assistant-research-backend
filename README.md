@@ -19,7 +19,7 @@ cd assistant-research-backend
 2. Create and activate a virtual environment:
 ```bash
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate
 ```
 
 3. Install dependencies:
@@ -33,15 +33,11 @@ cp .env.example .env
 # Edit the .env file with your configuration
 ```
 
-5. Set up the database:
-```bash
-./setup_databases.sh
+5. Set up forward port: Since our database is hosted on HUST's server, and that server doesn't expose port 5432 to the internet. We need to forward port 5432 to localhost in order to be able to access to the database. Before doing any further step, please contact [@hathubkhn](https://github.com/hathubkhn) for accessing the server. After that, run the following command:
 ```
-
-6. Run migrations:
-```bash
-python manage.py migrate
+ssh -f -N -L 5432:localhost:5432 hust@202.191.56.91
 ```
+and then enter the password. Now you can access to the database on `localhost:5432`
 
 7. Start the server:
 ```bash
