@@ -6,6 +6,7 @@ from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 
+from ..error_responses import standard_error_response
 from ..models import Dataset, DatasetSimilarDataset, InterestingDataset
 from ..serializers import DatasetListSerializer
 
@@ -179,7 +180,9 @@ class UnmarkDatasetInteresting(APIView):
                 status=status.HTTP_200_OK,
             )
         except InterestingDataset.DoesNotExist:
-            return Response(
-                {"message": "Dataset was not marked as interesting"},
-                status=status.HTTP_404_NOT_FOUND,
+            return standard_error_response(
+                request,
+                status.HTTP_404_NOT_FOUND,
+                "RESOURCE_NOT_FOUND",
+                "The dataset was not marked as interesting.",
             )

@@ -208,7 +208,7 @@ class PublicationDetail(APIView):
 
     def get(self, request, publication_id):
         user = request.user
-        publication = Publication.objects.get(id=publication_id, user=user)
+        publication = get_object_or_404(Publication, id=publication_id, user=user)
         serializer = PublicationSerializer(publication)
         return Response(serializer.data)
 
@@ -221,49 +221,11 @@ class PublicationDetail(APIView):
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            # Convert UUID from string to UUID object if needed
-            if isinstance(publication_id, str):
-                try:
-                    publication_id = uuid.UUID(publication_id)
-                except ValueError:
-                    pass
-
-            publication = Publication.objects.get(id=publication_id, user=user)
-            print(
-                f"[DEBUG] Found publication: {publication.id}, title: {publication.title}"
-            )
-        except Publication.DoesNotExist:
-            # Log the error for debugging
-            print(f"[DEBUG] Publication not found: {publication_id}, user: {user.id}")
-            print(
-                f"[DEBUG] All publications for user: {[str(p.id) for p in Publication.objects.filter(user=user)]}"
-            )
-            return Response(
-                {"error": "Publication not found"}, status=status.HTTP_404_NOT_FOUND
-            )
-
-        if request.method == "GET":
-            serializer = PublicationSerializer(publication)
-            return Response(serializer.data)
-
-        elif request.method == "PUT":
-            data = request.data.copy()
-            data["user"] = user.id
-
-            serializer = PublicationSerializer(publication, data=data, partial=True)
-            if serializer.is_valid():
-                serializer.save()
-                return Response(serializer.data)
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        elif request.method == "DELETE":
-            print(f"[DEBUG] Deleting publication with ID: {publication.id}")
-            publication.delete()
-            return Response(
-                {"message": "Publication deleted successfully"},
-                status=status.HTTP_204_NO_CONTENT,
-            )
+    def delete(self, request, publication_id):
+        user = request.user
+        publication = get_object_or_404(Publication, id=publication_id, user=user)
+        publication.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class Stats(APIView):

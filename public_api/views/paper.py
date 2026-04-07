@@ -9,6 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from ..error_responses import standard_error_response
 from ..models import Paper, InterestingPaper, DownloadedPaper
 from ..serializers import PaperDetailSerializer, PaperListSerializer, PaperSerializer
 
@@ -164,7 +165,9 @@ class UnmarkPaperDownloaded(APIView):
                 status=status.HTTP_200_OK,
             )
         except DownloadedPaper.DoesNotExist:
-            return Response(
-                data={"message": "Paper was not marked as downloaded"},
-                status=status.HTTP_404_NOT_FOUND,
+            return standard_error_response(
+                request,
+                status.HTTP_404_NOT_FOUND,
+                "RESOURCE_NOT_FOUND",
+                "The paper was not marked as downloaded.",
             )
