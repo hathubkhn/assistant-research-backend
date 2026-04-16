@@ -185,11 +185,11 @@ class UpdateProfile(APIView):
 
 class PublicationsList(APIView):
     permission_classes = [IsAuthenticated]
-    authentication_classes = []
+    authentication_classes = [TokenAuthentication]
 
     def get(self, request):
         user = request.user
-        publications = user.public_publications
+        publications = user.public_publications.all()
         serializer = PublicationSerializer(publications, many=True)
         return Response(serializer.data)
 
