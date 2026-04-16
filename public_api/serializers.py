@@ -73,9 +73,44 @@ class DatasetSerializer(serializers.ModelSerializer):
 
 
 class PublicationSerializer(serializers.ModelSerializer):
+    # FE often sends authors as list/object; normalize to text for DB storage.
+    authors = serializers.JSONField()
+    user = serializers.PrimaryKeyRelatedField(read_only=True)
+
     class Meta:
         model = Publication
         fields = "__all__"
+        read_only_fields = ["id", "user", "created_at", "updated_at"]
+
+    @staticmethod
+    def _normalize_authors_value(value):
+        if isinstance(value, (list, dict)):
+            return json.dumps(value)
+        return value
+
+    def create(self, validated_data):
+        if "authors" in validated_data:
+            validated_data["authors"] = self._normalize_authors_value(
+                validated_data["authors"]
+            )
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        if "authors" in validated_data:
+            validated_data["authors"] = self._normalize_authors_value(
+                validated_data["authors"]
+            )
+        return super().update(instance, validated_data)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        raw_authors = data.get("authors")
+        if isinstance(raw_authors, str):
+            try:
+                data["authors"] = json.loads(raw_authors)
+            except (TypeError, ValueError):
+                pass
+        return data
 
 
 class PaperListSerializer(serializers.ModelSerializer):

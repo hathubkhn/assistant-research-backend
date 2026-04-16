@@ -73,6 +73,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     # AllAuth middleware
     "allauth.account.middleware.AccountMiddleware",
+    "public_api.error_middleware.StandardApiErrorMiddleware",
 ]
 
 ROOT_URLCONF = "auth_project.urls"
@@ -201,6 +202,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny',
     ],
+    'EXCEPTION_HANDLER': 'public_api.exception_handlers.custom_exception_handler',
 }
 
 # Authentication backends

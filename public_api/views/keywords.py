@@ -1,11 +1,17 @@
+import logging
+
 from django.core.paginator import Paginator
 from django.db.models import Count, Q
 from rest_framework import status
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from ..error_responses import standard_error_response
 from ..models import Paper, Task
+
+logger = logging.getLogger(__name__)
 from ..serializers import TaskListParamsSerializer, TaskSerializer
 
 
@@ -74,7 +80,13 @@ class TasksList(APIView):
             paginated_queryset = paginator.page(page)
             serializer = TaskSerializer(paginated_queryset, many=True)
             return Response(serializer.data)
-        except Exception as e:
-            return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        except DRFValidationError:
+            raise
+        except Exception:
+            logger.exception("Tasks list failed")
+            return standard_error_response(
+                request,
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "INTERNAL_SERVER_ERROR",
+                "An unexpected error occurred while processing the request.",
             )

@@ -1,12 +1,17 @@
+import logging
 from datetime import datetime, timedelta
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from rest_framework import status
 from django.db.models import Count, Q
 from django.db.models.functions import TruncDate, TruncWeek, TruncMonth, TruncYear
+from ..error_responses import standard_error_response
 from ..models import Paper, Dataset, Task
 from ..serializers import PaperSerializer, TaskSerializer
+
+logger = logging.getLogger(__name__)
 
 class Dashboard(APIView):
     permission_classes = [AllowAny]
@@ -108,8 +113,14 @@ class Dashboard(APIView):
                 "trending_tasks": list(trending_tasks)
             })
             return Response(response_data)
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception:
+            logger.exception("Dashboard stats failed")
+            return standard_error_response(
+                request,
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "INTERNAL_SERVER_ERROR",
+                "An unexpected error occurred while processing the request.",
+            )
 
 class TaskPaperAnalytics(APIView):
     permission_classes = [AllowAny]
@@ -230,6 +241,12 @@ class TaskPaperAnalytics(APIView):
             }
             
             return Response(response_data)
-            
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        except Exception:
+            logger.exception("Task paper analytics failed")
+            return standard_error_response(
+                request,
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "INTERNAL_SERVER_ERROR",
+                "An unexpected error occurred while processing the request.",
+            )

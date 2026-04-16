@@ -95,3 +95,7 @@ from django.conf.urls.static import static
 urlpatterns = [
     path('api/', include('public_api.urls')),
 ]
+
+handler404 = 'auth_project.error_views.handler404'
+handler403 = 'auth_project.error_views.handler403'
+handler500 = 'auth_project.error_views.handler500'
