@@ -33,13 +33,15 @@ class DatasetsList(APIView):
         if search:
             filter_q &= Q(name__icontains=search) | Q(description__icontains=search)
 
-        datasets = datasets.filter(filter_q)
+        datasets = datasets.filter(filter_q).order_by("-created_at")
 
         total_count = datasets.count()
         paginator = Paginator(datasets, page_size)
         paginated_datasets = paginator.page(page)
 
-        serializer = DatasetListSerializer(paginated_datasets, many=True)
+        serializer = DatasetListSerializer(
+            paginated_datasets, many=True, context={"request": request}
+        )
         result = serializer.data
 
         response_data = {
@@ -128,7 +130,7 @@ class InterestingDatasets(APIView):
         page_size = int(request.query_params.get("pageSize", 20))
         interesting = InterestingDataset.objects.filter(user=user)
         dataset_ids = [item.dataset.id for item in interesting]
-        datasets = Dataset.objects.filter(id__in=dataset_ids)
+        datasets = Dataset.objects.filter(id__in=dataset_ids).order_by("-created_at")
         search = request.query_params.get("search")
         if search:
             datasets = datasets.filter(
@@ -136,7 +138,9 @@ class InterestingDatasets(APIView):
             )
         paginator = Paginator(datasets, page_size)
         paginated_datasets = paginator.page(page)
-        serializer = DatasetListSerializer(paginated_datasets, many=True)
+        serializer = DatasetListSerializer(
+            paginated_datasets, many=True, context={"request": request}
+        )
         pagination = {
             "page": page,
             "pageSize": page_size,

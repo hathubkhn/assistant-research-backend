@@ -63,7 +63,7 @@ class PaperSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def get_tasks(self, obj):
-        return obj.tasks.all().values_list("name", flat=True)
+        return list(obj.tasks.all().values_list("name", flat=True))
 
 
 class DatasetSerializer(serializers.ModelSerializer):
@@ -197,6 +197,7 @@ class PaperListSerializer(serializers.ModelSerializer):
 class DatasetListSerializer(serializers.ModelSerializer):
     downloadUrl = serializers.SerializerMethodField()
     category = serializers.SerializerMethodField()
+    thumbnailUrl = serializers.SerializerMethodField()
     tasks = serializers.SerializerMethodField()
     paperCount = serializers.SerializerMethodField()
     benchmarks = serializers.SerializerMethodField()
@@ -232,7 +233,10 @@ class DatasetListSerializer(serializers.ModelSerializer):
         return obj.data_type
 
     def get_tasks(self, obj):
-        return obj.tasks.all().values_list("name", flat=True)
+        return list(obj.tasks.all().values_list("name", flat=True))
+
+    def get_thumbnailUrl(self, obj):
+        return obj.thumbnail_url
 
     def get_paperCount(self, obj):
         return obj.papers.count()
@@ -258,9 +262,10 @@ class DatasetListSerializer(serializers.ModelSerializer):
         return benchmarks
 
     def get_isStarred(self, obj):
-        if self.context.get("request").user.is_authenticated:
+        request = self.context.get("request")
+        if request and request.user.is_authenticated:
             return InterestingDataset.objects.filter(
-                user=self.context.get("request").user, dataset=obj
+                user=request.user, dataset=obj
             ).exists()
         return False
 
