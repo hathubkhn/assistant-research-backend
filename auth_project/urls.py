@@ -96,6 +96,9 @@ urlpatterns = [
     path('api/', include('public_api.urls')),
 ]
 
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
 handler404 = 'auth_project.error_views.handler404'
 handler403 = 'auth_project.error_views.handler403'
 handler500 = 'auth_project.error_views.handler500'

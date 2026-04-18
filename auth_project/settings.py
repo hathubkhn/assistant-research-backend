@@ -284,12 +284,6 @@ AZURE_OPENAI_DEPLOYMENT_NAME = env.str('AZURE_OPENAI_DEPLOYMENT_NAME', 'gpt-4')
 # Maximum upload file size (5MB)
 DATA_UPLOAD_MAX_MEMORY_SIZE = None
 
-# Update URLs to serve media files in development
-if DEBUG:
-    from django.conf.urls.static import static
-    MIDDLEWARE += ['django.middleware.security.SecurityMiddleware']
-    urlpatterns = static(MEDIA_URL, document_root=MEDIA_ROOT)
-
 # CSRF settings for cross-origin requests
 CSRF_COOKIE_SAMESITE = 'None'  # Required for cross-origin requests in production
 CSRF_COOKIE_SECURE = True  # Only send cookie over HTTPS
