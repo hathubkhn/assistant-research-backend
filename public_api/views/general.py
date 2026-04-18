@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 import json
 import os
 import uuid
+from urllib.parse import urlparse, urlunparse
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -39,6 +40,44 @@ from ..serializers import (
 )
 
 User = get_user_model()
+
+
+def _normalize_avatar_url(avatar_url):
+    if not avatar_url:
+        return avatar_url
+
+    value = str(avatar_url).strip()
+    if not value:
+        return value
+
+    media_prefix = settings.MEDIA_URL.rstrip("/")
+    parsed = urlparse(value)
+    raw_path = parsed.path if parsed.scheme and parsed.netloc else value
+
+    if raw_path.startswith("/avatars/"):
+        normalized_path = f"{media_prefix}{raw_path}"
+    elif raw_path.startswith("avatars/"):
+        normalized_path = f"{media_prefix}/{raw_path}"
+    elif raw_path.startswith("media/avatars/"):
+        normalized_path = f"/{raw_path}"
+    elif raw_path.startswith("/media/avatars/"):
+        normalized_path = raw_path
+    else:
+        return value
+
+    if parsed.scheme and parsed.netloc:
+        return urlunparse(
+            (
+                parsed.scheme,
+                parsed.netloc,
+                normalized_path,
+                parsed.params,
+                parsed.query,
+                parsed.fragment,
+            )
+        )
+
+    return normalized_path
 
 
 class SearchView(APIView):
@@ -148,6 +187,12 @@ class GetProfile(APIView):
         serializer = ProfileSerializer(profile)
         data = serializer.data
 
+        normalized_avatar_url = _normalize_avatar_url(data.get("avatar_url"))
+        if normalized_avatar_url != data.get("avatar_url"):
+            data["avatar_url"] = normalized_avatar_url
+            profile.avatar_url = normalized_avatar_url
+            profile.save(update_fields=["avatar_url", "updated_at"])
+
         user_publications = Publication.objects.filter(user=request.user)
         publications_serializer = PublicationSerializer(user_publications, many=True)
         data["publications"] = publications_serializer.data
@@ -171,7 +216,13 @@ class UpdateProfile(APIView):
 
         profile = serializer.save()
 
+        normalized_avatar_url = _normalize_avatar_url(profile.avatar_url)
+        if normalized_avatar_url != profile.avatar_url:
+            profile.avatar_url = normalized_avatar_url
+            profile.save(update_fields=["avatar_url", "updated_at"])
+
         updated_data = serializer.data
+        updated_data["avatar_url"] = _normalize_avatar_url(updated_data.get("avatar_url"))
         publications = user.public_publications
         publications_serializer = PublicationSerializer(publications, many=True)
         updated_data["publications"] = publications_serializer.data
@@ -977,7 +1028,7 @@ class UpdateAvatar(APIView):
             f"avatars/{filename}", ContentFile(avatar_file.read())
         )
 
-        avatar_url = default_storage.url(file_path)
+        avatar_url = _normalize_avatar_url(default_storage.url(file_path))
 
         try:
             profile = Profile.objects.get(user=user)
