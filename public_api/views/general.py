@@ -1226,22 +1226,38 @@ class UploadPaper(APIView):
 
         metadata = extract_metadata_with_openai(pdf_text, file.name)
 
+        conference_obj = None
+        conference_name = metadata.get("conference")
+        if isinstance(conference_name, str) and conference_name.strip():
+            conference_obj, _ = Conference.objects.get_or_create(
+                name=conference_name.strip()
+            )
+
+        publication_date = None
+        year = metadata.get("year")
+        if isinstance(year, int) and 1900 <= year <= 3000:
+            publication_date = datetime(year, 1, 1).date()
+
         paper = Paper.objects.create(
-            title=metadata["title"],
-            authors=metadata["authors"],
-            abstract=metadata["abstract"],
-            conference=metadata["conference"],
-            year=metadata["year"],
-            field=metadata["field"],
-            keywords=metadata["keywords"],
-            downloadUrl=file.url,
-            doi=metadata["doi"],
-            bibtex=metadata["bibtex"],
-            sourceCode=metadata["sourceCode"],
+            title=metadata.get("title") or file.name,
+            abstract=metadata.get("abstract") or "",
+            doi=metadata.get("doi") or None,
+            publication_date=publication_date,
+            conference=conference_obj,
+            keywords=metadata.get("keywords") or [],
+            bibtex=metadata.get("bibtex") or "",
+            github_url=metadata.get("sourceCode") or None,
+            # These URLFields are required by the current schema.
+            url="https://example.com",
+            pdf_url="https://example.com",
             pdf_file=file,
-            file_name=file.name,
-            file_size=file.size,
         )
+
+        if paper.pdf_file:
+            pdf_absolute_url = request.build_absolute_uri(paper.pdf_file.url)
+            paper.url = pdf_absolute_url
+            paper.pdf_url = pdf_absolute_url
+            paper.save(update_fields=["url", "pdf_url", "updated_at"])
 
         InterestingPaper.objects.create(user=request.user, paper=paper)
         DownloadedPaper.objects.create(user=request.user, paper=paper)
@@ -1249,16 +1265,15 @@ class UploadPaper(APIView):
         response_data = {
             "id": str(paper.id),
             "title": paper.title,
-            "authors": paper.authors,
-            "conference": paper.conference,
-            "year": paper.year,
-            "field": paper.field,
+            "authors": metadata.get("authors") or ["Unknown"],
+            "conference": paper.conference.name if paper.conference else None,
+            "year": paper.publication_date.year if paper.publication_date else None,
             "keywords": paper.keywords,
             "abstract": paper.abstract,
-            "downloadUrl": paper.downloadUrl,
+            "downloadUrl": paper.pdf_url,
             "doi": paper.doi,
             "bibtex": paper.bibtex,
-            "sourceCode": paper.sourceCode,
+            "sourceCode": paper.github_url,
             "is_interesting": True,
             "is_downloaded": True,
             "is_uploaded": True,
