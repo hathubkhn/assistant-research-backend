@@ -18,7 +18,7 @@ class Dashboard(APIView):
 
     def get(self, request):
         start_date = request.query_params.get('startDate')
-        end_date = request.query_params.get('endDate')
+        end_date = datetime.strptime(request.query_params.get('endDate'), '%Y-%m-%d') + timedelta(days=1)
         period = request.query_params.get('period')
         
         try:
@@ -31,7 +31,7 @@ class Dashboard(APIView):
             }
             
             start = datetime.strptime(start_date, '%Y-%m-%d').date()
-            end = datetime.strptime(end_date, '%Y-%m-%d').date()
+            end = end_date.date()
             annotation_func, order_by_field = None, None
             if period == 'daily':
                 annotation_func = TruncDate('created_at')
