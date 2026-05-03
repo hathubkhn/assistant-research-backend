@@ -11,7 +11,11 @@ from rest_framework.views import APIView
 
 from ..error_responses import standard_error_response
 from ..models import Paper, InterestingPaper, DownloadedPaper
-from ..serializers import PaperDetailSerializer, PaperListSerializer, PaperSerializer
+from ..serializers import (
+    LibraryItemSerializer,
+    PaperDetailSerializer,
+    PaperListSerializer,
+)
 
 
 class PaperDetailView(APIView):
@@ -19,7 +23,7 @@ class PaperDetailView(APIView):
 
     def get(self, request, paper_id):
         paper = get_object_or_404(Paper, id=paper_id)
-        serializer = PaperDetailSerializer(paper)
+        serializer = PaperDetailSerializer(paper, context={"request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
@@ -34,7 +38,7 @@ class PaperBySlugView(APIView):
             queryset = queryset.filter(title__icontains=word)
         paper = queryset.first()
 
-        serializer = PaperDetailSerializer(paper)
+        serializer = PaperDetailSerializer(paper, context={"request": request})
         response_data = serializer.data
         return Response(response_data)
 
@@ -129,10 +133,13 @@ class ListDownloadedPapers(APIView):
 
     def get(self, request):
         user = request.user
-        downloaded_papers = DownloadedPaper.objects.filter(user=user).values_list(
-            "paper", flat=True
+        downloaded_papers = (
+            DownloadedPaper.objects.filter(user=user)
+            .select_related("paper", "paper__journal", "paper__conference")
+            .prefetch_related("paper__authors")
+            .order_by("-created_at")
         )
-        serializer = PaperSerializer(downloaded_papers, many=True)
+        serializer = LibraryItemSerializer(downloaded_papers, many=True)
         return Response(data=serializer.data, status=status.HTTP_200_OK)
 
 

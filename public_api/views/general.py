@@ -34,7 +34,9 @@ from ..models import (
 )
 from ..serializers import (
     DatasetSerializer,
+    LibraryItemSerializer,
     PaperSerializer,
+    PaperListSerializer,
     ProfileSerializer,
     PublicationSerializer,
 )
@@ -1088,17 +1090,23 @@ class MyLibrary(APIView):
         user = request.user
 
         if section == "interesting":
-            interesting = InterestingPaper.objects.filter(user=user)
-            paper_ids = [item.paper.id for item in interesting]
-            papers = Paper.objects.filter(id__in=paper_ids)
-            serializer = PaperSerializer(papers, many=True)
+            interesting = (
+                InterestingPaper.objects.filter(user=user)
+                .select_related("paper", "paper__journal", "paper__conference")
+                .prefetch_related("paper__authors")
+                .order_by("-created_at")
+            )
+            serializer = LibraryItemSerializer(interesting, many=True)
             return Response(serializer.data)
 
         elif section == "downloaded":
-            downloaded = DownloadedPaper.objects.filter(user=user)
-            paper_ids = [item.paper.id for item in downloaded]
-            papers = Paper.objects.filter(id__in=paper_ids)
-            serializer = PaperSerializer(papers, many=True)
+            downloaded = (
+                DownloadedPaper.objects.filter(user=user)
+                .select_related("paper", "paper__journal", "paper__conference")
+                .prefetch_related("paper__authors")
+                .order_by("-created_at")
+            )
+            serializer = LibraryItemSerializer(downloaded, many=True)
             return Response(serializer.data)
 
         elif section == "datasets":

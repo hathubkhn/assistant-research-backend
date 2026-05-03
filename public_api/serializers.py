@@ -5,6 +5,7 @@ from rest_framework import serializers
 from .models import (
     Conference,
     Dataset,
+    DownloadedPaper,
     InterestingDataset,
     Journal,
     Paper,
@@ -194,6 +195,68 @@ class PaperListSerializer(serializers.ModelSerializer):
             return []
 
 
+class LibraryItemSerializer(serializers.Serializer):
+    id = serializers.UUIDField(source="paper.id", read_only=True)
+    title = serializers.CharField(source="paper.title", read_only=True)
+    authors = serializers.SerializerMethodField()
+    conference = serializers.SerializerMethodField()
+    year = serializers.SerializerMethodField()
+    keywords = serializers.SerializerMethodField()
+    abstract = serializers.CharField(source="paper.abstract", read_only=True)
+    downloadUrl = serializers.SerializerMethodField()
+    is_interesting = serializers.SerializerMethodField()
+    is_downloaded = serializers.SerializerMethodField()
+    is_uploaded = serializers.SerializerMethodField()
+    added_date = serializers.DateTimeField(source="created_at", read_only=True)
+    doi = serializers.CharField(source="paper.doi", read_only=True)
+    bibtex = serializers.CharField(source="paper.bibtex", read_only=True)
+
+    class Meta:
+        fields = [
+            "id",
+            "title",
+            "authors",
+            "conference",
+            "year",
+            "keywords",
+            "abstract",
+            "downloadUrl",
+            "is_interesting",
+            "is_downloaded",
+            "is_uploaded",
+            "added_date",
+            "doi",
+            "bibtex",
+        ]
+
+    def get_authors(self, obj):
+        authors_list = [author.name for author in obj.paper.authors.all()]
+        return authors_list if authors_list else ["Unknown"]
+
+    def get_conference(self, obj):
+        if obj.paper.conference is not None:
+            return obj.paper.conference.name
+        return ""
+
+    def get_year(self, obj):
+        return obj.paper.publication_date.year if obj.paper.publication_date else None
+
+    def get_keywords(self, obj):
+        return obj.paper.keywords or []
+
+    def get_downloadUrl(self, obj):
+        return obj.paper.pdf_url
+
+    def get_is_interesting(self, obj):
+        return obj.paper.interested_users.filter(user=obj.user).exists()
+
+    def get_is_downloaded(self, obj):
+        return hasattr(obj, "paper") and obj.paper.downloaded_users.filter(user=obj.user).exists()
+
+    def get_is_uploaded(self, obj):
+        return bool(obj.paper.pdf_file)
+
+
 class DatasetListSerializer(serializers.ModelSerializer):
     downloadUrl = serializers.SerializerMethodField()
     category = serializers.SerializerMethodField()
@@ -276,6 +339,9 @@ class PaperDetailSerializer(PaperListSerializer):
     citationsByYear = serializers.SerializerMethodField()
     conferenceRank = serializers.SerializerMethodField()
     conferenceAbbreviation = serializers.SerializerMethodField()
+    is_interesting = serializers.SerializerMethodField()
+    is_downloaded = serializers.SerializerMethodField()
+    is_uploaded = serializers.SerializerMethodField()
 
     class Meta:
         model = Paper
@@ -301,6 +367,9 @@ class PaperDetailSerializer(PaperListSerializer):
             "conferenceRank",
             "conferenceAbbreviation",
             "datasets",
+            "is_interesting",
+            "is_downloaded",
+            "is_uploaded",
         ]
 
     def get_citationsByYear(self, obj):
@@ -343,6 +412,27 @@ class PaperDetailSerializer(PaperListSerializer):
             return obj.github_url
         else:
             return None
+
+    def _get_request_user(self):
+        request = self.context.get("request")
+        if request and request.user.is_authenticated:
+            return request.user
+        return None
+
+    def get_is_interesting(self, obj):
+        user = self._get_request_user()
+        if not user:
+            return False
+        return obj.interested_users.filter(user=user).exists()
+
+    def get_is_downloaded(self, obj):
+        user = self._get_request_user()
+        if not user:
+            return False
+        return obj.downloaded_users.filter(user=user).exists()
+
+    def get_is_uploaded(self, obj):
+        return bool(obj.pdf_file)
 
 
 class TaskSerializer(serializers.ModelSerializer):
