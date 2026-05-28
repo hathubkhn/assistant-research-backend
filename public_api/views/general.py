@@ -1122,71 +1122,73 @@ class MyLibrary(APIView):
             except Profile.DoesNotExist:
                 profile = Profile.objects.create(user=request.user)
 
-            user_keywords = []
-
+            user_keywords_lower = set()
             if profile.research_interests:
-                user_keywords = user_keywords + [
-                    k.strip()
+                user_keywords_lower.update(
+                    k.strip().lower()
                     for k in profile.research_interests.split(",")
                     if k and k.strip()
-                ]
-
+                )
             if profile.additional_keywords:
-                user_keywords = user_keywords + [
-                    k.strip()
+                user_keywords_lower.update(
+                    k.strip().lower()
                     for k in profile.additional_keywords.split(",")
                     if k and k.strip()
-                ]
+                )
 
-            user_keywords = list(set(user_keywords))
-
-            if not user_keywords:
+            if not user_keywords_lower:
                 return Response([])
 
-            papers = Paper.objects.all()
-            filtered_papers = []
-
-            interesting_papers = InterestingPaper.objects.filter(user=user)
-            existing_paper_ids = [item.paper.id for item in interesting_papers]
-
             thirty_days_ago = timezone.now() - timedelta(days=30)
+            excluded_paper_ids = InterestingPaper.objects.filter(
+                user=user
+            ).values_list("paper_id", flat=True)
 
-            for paper in papers:
-                if paper.id in existing_paper_ids:
+            candidates = (
+                Paper.objects
+                .filter(created_at__gte=thirty_days_ago)
+                .exclude(id__in=excluded_paper_ids)
+                .only("id", "keywords")
+                .iterator(chunk_size=200)
+            )
+
+            matched_ids = []
+            for paper in candidates:
+                raw = paper.keywords
+                if not raw:
+                    continue
+                if isinstance(raw, list):
+                    paper_keywords = raw
+                elif isinstance(raw, str):
+                    try:
+                        paper_keywords = json.loads(raw)
+                    except json.JSONDecodeError:
+                        paper_keywords = [
+                            k.strip() for k in raw.split(",") if k and k.strip()
+                        ]
+                else:
                     continue
 
-                if (
-                    not hasattr(paper, "created_at")
-                    or paper.created_at is None
-                    or paper.created_at < thirty_days_ago
-                ):
-                    continue
+                paper_keywords_lower = {
+                    pk.lower() for pk in paper_keywords if isinstance(pk, str)
+                }
+                if user_keywords_lower & paper_keywords_lower:
+                    matched_ids.append(paper.id)
+                    if len(matched_ids) >= 20:
+                        break
 
-                paper_keywords = []
-                if paper.keywords:
-                    if isinstance(paper.keywords, list):
-                        paper_keywords = paper.keywords
-                    elif isinstance(paper.keywords, str):
-                        try:
-                            paper_keywords = json.loads(paper.keywords)
-                        except json.JSONDecodeError:
-                            paper_keywords = [
-                                k.strip()
-                                for k in paper.keywords.split(",")
-                                if k and k.strip()
-                            ]
-                    else:
-                        continue
+            if not matched_ids:
+                return Response([])
 
-                if any(
-                    k.lower() in [pk.lower() for pk in paper_keywords]
-                    for k in user_keywords
-                ):
-                    filtered_papers.append(paper)
+            papers_by_id = {
+                p.id: p
+                for p in Paper.objects.filter(id__in=matched_ids)
+                .select_related("journal", "conference")
+                .prefetch_related("tasks")
+            }
+            ordered_papers = [papers_by_id[pid] for pid in matched_ids if pid in papers_by_id]
 
-            filtered_papers = filtered_papers[:20]
-
-            serializer = PaperSerializer(filtered_papers, many=True)
+            serializer = PaperSerializer(ordered_papers, many=True)
             return Response(serializer.data)
 
         else:
