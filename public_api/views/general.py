@@ -32,6 +32,7 @@ from ..models import (
     Profile,
     Publication,
 )
+from ..services.embed_client import embed_paper
 from ..serializers import (
     DatasetSerializer,
     LibraryItemSerializer,
@@ -1271,6 +1272,10 @@ class UploadPaper(APIView):
 
         InterestingPaper.objects.create(user=request.user, paper=paper)
         DownloadedPaper.objects.create(user=request.user, paper=paper)
+
+        # Mirror into Qdrant for semantic search / recommendations. Fire-and-forget;
+        # failures are logged and the paper is left with embedded_at=NULL for backfill.
+        embed_paper(paper)
 
         response_data = {
             "id": str(paper.id),
