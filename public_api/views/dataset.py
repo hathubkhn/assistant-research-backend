@@ -7,6 +7,10 @@ from django.shortcuts import get_object_or_404
 from rest_framework import status
 
 from ..error_responses import standard_error_response
+from ..library_limits import (
+    can_add_interesting_dataset,
+    dataset_interesting_limit_response,
+)
 from ..models import Dataset, DatasetSimilarDataset, InterestingDataset
 from ..serializers import DatasetListSerializer
 
@@ -158,6 +162,9 @@ class MarkDatasetInteresting(APIView):
         user = request.user
 
         dataset = get_object_or_404(Dataset, id=dataset_id)
+
+        if not can_add_interesting_dataset(user, dataset):
+            return dataset_interesting_limit_response(request)
 
         interesting, created = InterestingDataset.objects.get_or_create(
             user=user, dataset=dataset

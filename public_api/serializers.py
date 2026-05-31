@@ -13,6 +13,7 @@ from .models import (
     Publication,
     Task,
 )
+from .venue_papers import serialize_venue_papers
 
 
 class ProfileSerializer(serializers.ModelSerializer):
@@ -500,12 +501,5 @@ class ConferenceDetailSerializer(serializers.ModelSerializer):
         return obj.papers.count()
 
     def get_papers(self, obj):
-        papers = obj.papers.all()
-        papers_info = papers.values_list("id", "title", "publication_date", "authors")
-        papers_info = [{
-            "id": paper[0],
-            "title": paper[1],
-            "publication_date": paper[2],
-            "authors": paper[3],
-        } for paper in papers_info]
-        return papers_info
+        return serialize_venue_papers(obj.papers.all())
+        

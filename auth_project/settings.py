@@ -275,11 +275,15 @@ API_URL = env.str('API_URL', default='http://localhost:8000')
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# Azure OpenAI API configuration
-AZURE_OPENAI_API_KEY = env.str('AZURE_OPENAI_API_KEY', '')
-AZURE_OPENAI_ENDPOINT = env.str('AZURE_OPENAI_ENDPOINT', '')
-AZURE_OPENAI_API_VERSION = env.str('AZURE_OPENAI_API_VERSION', '2023-05-15')
-AZURE_OPENAI_DEPLOYMENT_NAME = env.str('AZURE_OPENAI_DEPLOYMENT_NAME', 'gpt-4')
+# Azure OpenAI API configuration (legacy – kept for rollback)
+# AZURE_OPENAI_API_KEY = env.str('AZURE_OPENAI_API_KEY', '')
+# AZURE_OPENAI_ENDPOINT = env.str('AZURE_OPENAI_ENDPOINT', '')
+# AZURE_OPENAI_API_VERSION = env.str('AZURE_OPENAI_API_VERSION', '2023-05-15')
+# AZURE_OPENAI_DEPLOYMENT_NAME = env.str('AZURE_OPENAI_DEPLOYMENT_NAME', 'gpt-4')
+
+# OpenAI API configuration (paper upload metadata extraction)
+OPENAI_API_KEY = env.str('OPENAI_API_KEY', '')
+OPENAI_MODEL = env.str('OPENAI_MODEL', 'gpt-4o-mini')
 
 # Maximum upload file size (5MB)
 DATA_UPLOAD_MAX_MEMORY_SIZE = None

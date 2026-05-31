@@ -2,14 +2,25 @@ import os
 import re
 import io
 import PyPDF2
-import openai
-from django.conf import settings
 import json
+from django.conf import settings
+from openai import OpenAI
 
-openai.api_type = "azure"
-openai.api_key = settings.AZURE_OPENAI_API_KEY
-openai.api_base = settings.AZURE_OPENAI_ENDPOINT
-openai.api_version = settings.AZURE_OPENAI_API_VERSION
+# --- Azure OpenAI (legacy; kept for rollback) ---
+# import openai
+# openai.api_type = "azure"
+# openai.api_key = settings.AZURE_OPENAI_API_KEY
+# openai.api_base = settings.AZURE_OPENAI_ENDPOINT
+# openai.api_version = settings.AZURE_OPENAI_API_VERSION
+
+_openai_client = None
+
+
+def _get_openai_client():
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    return _openai_client
 
 def extract_text_from_pdf(file):
     """
@@ -42,7 +53,7 @@ def extract_text_from_pdf(file):
 
 def extract_metadata_with_openai(text, filename):
     """
-    Use Azure OpenAI to extract metadata from PDF text.
+    Use OpenAI to extract metadata from PDF text.
     
     Args:
         text (str): The extracted text from the PDF
@@ -103,12 +114,21 @@ Respond in the following JSON format only, without any additional text or explan
 }}
 """
 
-        response = openai.chat.completions.create(
-            model=settings.AZURE_OPENAI_DEPLOYMENT_NAME,
+        client = _get_openai_client()
+        response = client.chat.completions.create(
+            model=settings.OPENAI_MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.1,
-            max_tokens=1000
+            max_tokens=1000,
         )
+
+        # --- Azure OpenAI (legacy) ---
+        # response = openai.chat.completions.create(
+        #     model=settings.AZURE_OPENAI_DEPLOYMENT_NAME,
+        #     messages=[{"role": "user", "content": prompt}],
+        #     temperature=0.1,
+        #     max_tokens=1000,
+        # )
         
         result = response.choices[0].message.content.strip()
         
@@ -125,5 +145,6 @@ Respond in the following JSON format only, without any additional text or explan
         return metadata
         
     except Exception as e:
-        print(f"Error extracting metadata with Azure OpenAI: {e}")
-        return default_metadata 
+        print(f"Error extracting metadata with OpenAI: {e}")
+        return default_metadata
+      

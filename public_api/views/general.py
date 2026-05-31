@@ -21,6 +21,7 @@ from rest_framework.views import APIView
 
 from users.utils import extract_metadata_with_openai, extract_text_from_pdf
 
+from ..library_limits import can_add_interesting_paper, paper_interesting_limit_response
 from ..models import (
     Conference,
     Dataset,
@@ -1213,7 +1214,7 @@ class UploadPaper(APIView):
         Process:
         1. Validates the uploaded file is a PDF
         2. Extracts text from the PDF
-        3. Analyzes the content using Azure OpenAI to extract metadata
+        3. Analyzes the content using OpenAI to extract metadata
         4. Creates a paper record with the extracted metadata
 
         Returns:
@@ -1269,6 +1270,10 @@ class UploadPaper(APIView):
             paper.url = pdf_absolute_url
             paper.pdf_url = pdf_absolute_url
             paper.save(update_fields=["url", "pdf_url", "updated_at"])
+
+        if not can_add_interesting_paper(request.user):
+            paper.delete()
+            return paper_interesting_limit_response(request)
 
         InterestingPaper.objects.create(user=request.user, paper=paper)
         DownloadedPaper.objects.create(user=request.user, paper=paper)

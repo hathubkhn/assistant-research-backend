@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from django.core.paginator import Paginator
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework import filters
@@ -10,6 +11,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ..error_responses import standard_error_response
+from ..library_limits import can_add_interesting_paper, paper_interesting_limit_response
 from ..models import Paper, InterestingPaper, DownloadedPaper
 from ..serializers import (
     LibraryItemSerializer,
@@ -57,10 +59,12 @@ class PapersList(APIView):
         return self.queryset
 
     def get(self, request):
-        queryset = self.filter_queryset()
+        queryset = self.filter_queryset().select_related("journal", "conference")
 
         year = request.query_params.get("year")
         venue = request.query_params.get("venue")
+        venue_id = request.query_params.get("venue_id")
+        venue_type = request.query_params.get("venueType")
         start_date = request.query_params.get("startDate")
         end_date = request.query_params.get("endDate")
 
@@ -68,21 +72,35 @@ class PapersList(APIView):
         page_size = int(request.query_params.get("pageSize", 20))
         task_ids = request.query_params.get("taskIds", [])
 
-        filter_criteria = {}
         if year:
-            filter_criteria["publication_date__year"] = int(year)
-        if venue:
-            filter_criteria["journal_or_conference"] = venue
+            queryset = queryset.filter(publication_date__year=int(year))
+
+        if venue_id:
+            queryset = queryset.filter(
+                Q(journal_id=venue_id) | Q(conference_id=venue_id)
+            )
+        elif venue:
+            queryset = queryset.filter(
+                Q(journal__name__icontains=venue)
+                | Q(conference__name__icontains=venue)
+            )
+
+        if venue_type == "journal":
+            queryset = queryset.filter(journal_id__isnull=False)
+        elif venue_type == "conference":
+            queryset = queryset.filter(conference_id__isnull=False)
+
         if task_ids:
-            filter_criteria["task_id__in"] = task_ids
+            queryset = queryset.filter(task_id__in=task_ids)
 
         if start_date:
             start_date = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-            filter_criteria["crawled_at__gte"] = start_date
+            queryset = queryset.filter(crawled_at__gte=start_date)
         if end_date:
             end_date = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
-            filter_criteria["crawled_at__lte"] = end_date
-        papers = queryset.filter(**filter_criteria).order_by(self.ordering_fields[0])
+            queryset = queryset.filter(crawled_at__lte=end_date)
+
+        papers = queryset.order_by(self.ordering_fields[0])
         paginator = Paginator(papers, page_size)
         paginated_papers = paginator.page(page)
         serializer = PaperListSerializer(paginated_papers, many=True)
@@ -107,6 +125,8 @@ class StarPaperView(APIView):
     def post(self, request, paper_id):
         user = request.user
         paper = get_object_or_404(Paper, id=paper_id)
+        if not can_add_interesting_paper(user, paper):
+            return paper_interesting_limit_response(request)
         interesting, created = InterestingPaper.objects.get_or_create(
             user=user, paper=paper
         )

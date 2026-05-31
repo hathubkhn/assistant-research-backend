@@ -667,7 +667,7 @@ class PaperUploadView(APIView):
     """
     API endpoint that allows users to upload academic papers.
     
-    Handles PDF file uploads and automatically extracts metadata using Azure OpenAI.
+    Handles PDF file uploads and automatically extracts metadata using OpenAI.
     
     * Requires token authentication
     * Supports multipart/form-data for file uploads
@@ -687,7 +687,7 @@ class PaperUploadView(APIView):
         Process:
         1. Validates the uploaded file is a PDF
         2. Extracts text from the PDF
-        3. Analyzes the content using Azure OpenAI to extract metadata
+        3. Analyzes the content using OpenAI to extract metadata
         4. Creates a paper record with the extracted metadata
         
         Returns:
