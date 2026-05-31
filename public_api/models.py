@@ -132,6 +132,74 @@ class Paper(models.Model):
         else:
             return self.conference
 
+
+class VenueLookupCache(models.Model):
+    """Cached external API candidate lists keyed by DOI or normalized title."""
+
+    class LookupType(models.TextChoices):
+        DOI = "doi", "DOI"
+        TITLE = "title", "Title"
+
+    lookup_key = models.CharField(max_length=128, unique=True)
+    lookup_type = models.CharField(max_length=10, choices=LookupType.choices)
+    lookup_value = models.CharField(max_length=500, blank=True)
+    candidates = models.JSONField(default=list)
+    fetched_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "venue_lookup_cache"
+        indexes = [
+            models.Index(fields=["lookup_type"]),
+            models.Index(fields=["-fetched_at"]),
+        ]
+
+
+class PaperVenueMapping(models.Model):
+    """Staging result per paper for bulk venue mapping at scale."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        OK_AUTO = "ok_auto", "OK auto"
+        REVIEW = "review", "Review"
+        NO_MATCH_DB = "no_match_db", "No match in DB"
+        NO_VENUE = "no_venue", "No venue"
+
+    paper = models.OneToOneField(
+        Paper,
+        on_delete=models.CASCADE,
+        related_name="venue_mapping_result",
+    )
+    lookup_key = models.CharField(max_length=128, db_index=True, blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    input_doi = models.CharField(max_length=200, blank=True)
+    resolved_doi = models.CharField(max_length=200, blank=True)
+    classification = models.CharField(max_length=80, blank=True)
+    venue_from_api = models.CharField(max_length=500, blank=True)
+    match_score = models.FloatField(null=True, blank=True)
+    api_source = models.CharField(max_length=80, blank=True)
+    year = models.CharField(max_length=16, blank=True)
+    db_venue_kind = models.CharField(max_length=20, blank=True)
+    db_venue_id = models.UUIDField(null=True, blank=True)
+    db_venue_name = models.CharField(max_length=255, blank=True)
+    db_venue_fuzzy_score = models.FloatField(null=True, blank=True)
+    no_match_db_payload = models.TextField(blank=True)
+    notes = models.CharField(max_length=255, blank=True)
+    candidates_count = models.PositiveIntegerField(default=0)
+    processed_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "paper_venue_mapping"
+        indexes = [
+            models.Index(fields=["status"]),
+            models.Index(fields=["lookup_key"]),
+        ]
+
+
 class Author(models.Model):
     name = models.CharField(max_length=200)
     email = models.EmailField(max_length=200)

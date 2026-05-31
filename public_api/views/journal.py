@@ -1,5 +1,5 @@
 from django.core.paginator import Paginator
-from django.db.models import Q
+from django.db.models import Case, IntegerField, Q, Value, When
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.permissions import AllowAny
@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ..models import Journal
+from ..venue_papers import serialize_venue_papers
 
 
 class JournalsList(APIView):
@@ -18,10 +19,20 @@ class JournalsList(APIView):
 
         search = request.query_params.get("search")
         quartile = request.query_params.get("quartile")
+        tier = request.query_params.get("tier")
         impact_min = request.query_params.get("impactMin")
         impact_max = request.query_params.get("impactMax")
 
-        journals = Journal.objects.all()
+        journals = Journal.objects.annotate(
+            quartile_order=Case(
+                When(quartile="Q1", then=Value(0)),
+                When(quartile="Q2", then=Value(1)),
+                When(quartile="Q3", then=Value(2)),
+                When(quartile="Q4", then=Value(3)),
+                default=Value(99),
+                output_field=IntegerField(),
+            )
+        ).order_by("quartile_order", "name")
 
         if search:
             journals = journals.filter(
@@ -30,6 +41,11 @@ class JournalsList(APIView):
 
         if quartile:
             journals = journals.filter(quartile=quartile)
+
+        if tier == "top":
+            journals = journals.filter(quartile="Q1")
+        elif tier == "other":
+            journals = journals.exclude(quartile="Q1")
 
         if impact_min is not None:
             journals = journals.filter(impact_factor__gte=float(impact_min))
@@ -74,15 +90,7 @@ class JournalDetailView(APIView):
     def get(self, request, journal_id):
         journal = get_object_or_404(Journal, id=journal_id)
         papers_count = journal.papers.count()
-        papers = journal.papers.all()
-
-        paper_items = papers.values_list("id", "title", "publication_date", "authors")
-        paper_items = [{
-            "id": paper[0],
-            "title": paper[1],
-            "publication_date": paper[2],
-            "authors": paper[3],
-        } for paper in paper_items]
+        paper_items = serialize_venue_papers(journal.papers.all())
 
         journal_data = {
             "id": journal.id,

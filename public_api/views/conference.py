@@ -4,7 +4,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
-from django.db.models import Q
+from django.db.models import Case, IntegerField, Q, Value, When
 from django.core.paginator import Paginator
 
 from ..models import Conference
@@ -20,7 +20,17 @@ class ConferencesList(APIView):
 
         search = request.query_params.get("search")
         rank = request.query_params.get("rank")
-        conferences = Conference.objects.all()
+        tier = request.query_params.get("tier")
+        conferences = Conference.objects.annotate(
+            rank_order=Case(
+                When(rank="A*", then=Value(0)),
+                When(rank="A", then=Value(1)),
+                When(rank="B", then=Value(2)),
+                When(rank="C", then=Value(3)),
+                default=Value(99),
+                output_field=IntegerField(),
+            )
+        ).order_by("rank_order", "name")
 
         if search:
             conferences = conferences.filter(
@@ -32,6 +42,11 @@ class ConferencesList(APIView):
                 conferences = conferences.filter(Q(rank__isnull=True) | Q(rank=""))
             else:
                 conferences = conferences.filter(rank=rank)
+
+        if tier == "top":
+            conferences = conferences.filter(rank__in=["A*", "A"])
+        elif tier == "other":
+            conferences = conferences.exclude(rank__in=["A*", "A"])
 
         paginator = Paginator(conferences, page_size)
         paginated_conferences = paginator.page(page)
