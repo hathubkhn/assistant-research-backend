@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("public_api", "0006_conference_conference_id_26d896_idx_and_more"),
+        ("public_api", "0009_remove_conference_category_placeholder"),
     ]
 
     operations = [
