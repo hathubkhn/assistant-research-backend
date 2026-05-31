@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import os
 import re
 import time
 from typing import Any
@@ -20,6 +21,7 @@ HEADERS = {
 ARXIV_DOI_PREFIX = "10.48550/arxiv"
 MIN_TITLE_MATCH = 85
 MIN_DB_VENUE_MATCH = 82
+MIN_OK_AUTO_FUZZY = int(os.environ.get("VENUE_OK_AUTO_FUZZY", "92"))
 
 
 def normalize_title(title: str) -> str:
@@ -411,6 +413,32 @@ def get_or_fetch_cached_candidates(
     return candidates, lookup_key
 
 
+def pick_resolved_publisher_doi(
+    candidates: list[dict],
+    *,
+    input_doi: str = "",
+    title: str | None = None,
+    min_title_match: int = MIN_TITLE_MATCH,
+) -> str:
+    """
+    When input is an arXiv DOI, prefer a publisher DOI from title/DOI search results.
+    Falls back to input_doi if no published match passes the title score gate.
+    """
+    input_norm = normalize_doi(input_doi)
+    ranked = sorted(
+        candidates,
+        key=lambda c: _rank_candidate(c, title),
+        reverse=True,
+    )
+    for c in ranked:
+        if c.get("match_score", 0) < min_title_match:
+            continue
+        candidate_doi = normalize_doi(c.get("doi"))
+        if candidate_doi and not is_arxiv_doi(candidate_doi):
+            return candidate_doi
+    return input_norm
+
+
 def pick_best_candidate(
     candidates: list[dict],
     *,
@@ -504,6 +532,7 @@ def map_paper_record(
     conferences: list[tuple[str, str]],
     min_title_match: int = MIN_TITLE_MATCH,
     min_db_match: int = MIN_DB_VENUE_MATCH,
+    min_ok_auto_fuzzy: int = MIN_OK_AUTO_FUZZY,
     candidates: list[dict] | None = None,
     lookup_key: str | None = None,
     skip_semantic_scholar: bool = False,
@@ -544,13 +573,20 @@ def map_paper_record(
         "db_venue_name": "",
         "db_venue_fuzzy_score": "",
         "no_match_db_payload": "",
+        "publisher": "",
+        "venue_url": "",
         "status": "no_venue",
         "notes": "",
         "candidates_count": len(candidates),
     }
 
     if top_candidate:
-        resolved_doi = normalize_doi(top_candidate.get("doi")) or normalize_doi(input_doi)
+        resolved_doi = pick_resolved_publisher_doi(
+            candidates,
+            input_doi=input_doi,
+            title=title,
+            min_title_match=min_title_match,
+        )
         classification = top_candidate.get("classification", "")
         venue_name = (top_candidate.get("venue") or "").strip()
         row.update({
@@ -560,6 +596,8 @@ def map_paper_record(
             "match_score": top_candidate.get("match_score"),
             "api_source": top_candidate.get("source"),
             "year": top_candidate.get("year") or "",
+            "publisher": (top_candidate.get("publisher") or "")[:255],
+            "venue_url": (top_candidate.get("url") or "")[:200],
         })
     else:
         return row
@@ -605,7 +643,10 @@ def map_paper_record(
         "db_venue_fuzzy_score": db_match["fuzzy_score"],
     })
 
-    if db_match["fuzzy_score"] >= 95 and best.get("match_score", 0) >= min_title_match:
+    if (
+        db_match["fuzzy_score"] >= min_ok_auto_fuzzy
+        and best.get("match_score", 0) >= min_title_match
+    ):
         row["status"] = "ok_auto"
     else:
         row["status"] = "review"
