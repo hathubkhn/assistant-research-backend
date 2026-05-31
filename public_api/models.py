@@ -101,7 +101,9 @@ class Paper(models.Model):
     views_count = models.IntegerField(default=0)
     citations_count = models.IntegerField(default=0)
     references = models.ManyToManyField('self', symmetrical=False, related_name='referenced_papers')
-    
+
+    embedded_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
