@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
 from environs import Env
 
@@ -284,6 +285,10 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # OpenAI API configuration (paper upload metadata extraction)
 OPENAI_API_KEY = env.str('OPENAI_API_KEY', '')
 OPENAI_MODEL = env.str('OPENAI_MODEL', 'gpt-4o-mini')
+
+# Auto venue mapping (crawler → POST /api/papers/<id>/map-venue/)
+INTERNAL_VENUE_MAP_KEY = env.str('INTERNAL_VENUE_MAP_KEY', default='')
+VENUE_OK_AUTO_FUZZY = int(os.environ.get('VENUE_OK_AUTO_FUZZY', '92'))
 
 # Maximum upload file size (5MB)
 DATA_UPLOAD_MAX_MEMORY_SIZE = None

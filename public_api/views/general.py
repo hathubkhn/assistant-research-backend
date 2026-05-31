@@ -22,6 +22,7 @@ from rest_framework.views import APIView
 from users.utils import extract_metadata_with_openai, extract_text_from_pdf
 
 from ..library_limits import can_add_interesting_paper, paper_interesting_limit_response
+from ..services.venue_apply import apply_venue_mapping_for_paper
 from ..models import (
     Conference,
     Dataset,
@@ -1238,13 +1239,6 @@ class UploadPaper(APIView):
 
         metadata = extract_metadata_with_openai(pdf_text, file.name)
 
-        conference_obj = None
-        conference_name = metadata.get("conference")
-        if isinstance(conference_name, str) and conference_name.strip():
-            conference_obj, _ = Conference.objects.get_or_create(
-                name=conference_name.strip()
-            )
-
         publication_date = None
         year = metadata.get("year")
         if isinstance(year, int) and 1900 <= year <= 3000:
@@ -1255,7 +1249,6 @@ class UploadPaper(APIView):
             abstract=metadata.get("abstract") or "",
             doi=metadata.get("doi") or None,
             publication_date=publication_date,
-            conference=conference_obj,
             keywords=metadata.get("keywords") or [],
             bibtex=metadata.get("bibtex") or "",
             github_url=metadata.get("sourceCode") or None,
@@ -1278,6 +1271,9 @@ class UploadPaper(APIView):
         InterestingPaper.objects.create(user=request.user, paper=paper)
         DownloadedPaper.objects.create(user=request.user, paper=paper)
 
+        venue_mapping = apply_venue_mapping_for_paper(paper, update_doi=True)
+        paper.refresh_from_db()
+
         # Mirror into Qdrant for semantic search / recommendations. Fire-and-forget;
         # failures are logged and the paper is left with embedded_at=NULL for backfill.
         embed_paper(paper)
@@ -1287,6 +1283,8 @@ class UploadPaper(APIView):
             "title": paper.title,
             "authors": metadata.get("authors") or ["Unknown"],
             "conference": paper.conference.name if paper.conference else None,
+            "journal": paper.journal.name if paper.journal else None,
+            "venue_mapping_status": venue_mapping.get("status"),
             "year": paper.publication_date.year if paper.publication_date else None,
             "keywords": paper.keywords,
             "abstract": paper.abstract,

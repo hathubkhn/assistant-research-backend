@@ -45,6 +45,7 @@ from .views.general import (
     UploadPaper,
     ResearchAssistant,
 )
+from .views.venue_mapping import MapPaperVenueView
 
 urlpatterns = [
     path("dashboard/", Dashboard.as_view(), name="public-dashboard"),
@@ -61,6 +62,11 @@ urlpatterns = [
     path('papers/mark-downloaded/<uuid:paper_id>/', MarkPaperDownloaded.as_view(), name='api-mark-paper-downloaded'),
     path('papers/<uuid:paper_id>/unmark-downloaded/', UnmarkPaperDownloaded.as_view(), name='api-unmark-paper-downloaded'),
     path('papers/upload/', UploadPaper.as_view(), name='api-upload-paper'),
+    path(
+        'papers/<uuid:paper_id>/map-venue/',
+        MapPaperVenueView.as_view(),
+        name='api-map-paper-venue',
+    ),
     
     path("datasets/", DatasetsList.as_view(), name="public-datasets-list"),
     path('datasets/<uuid:dataset_id>/', DatasetDetail.as_view(), name='api-dataset-detail'),
