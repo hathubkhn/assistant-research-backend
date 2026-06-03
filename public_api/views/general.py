@@ -35,6 +35,10 @@ from ..models import (
     Publication,
 )
 from ..services.embed_client import embed_paper
+from ..services.recommendation_service import (
+    load_recommended_papers,
+    recommend_paper_ids,
+)
 from ..serializers import (
     DatasetSerializer,
     LibraryItemSerializer,
@@ -1125,72 +1129,11 @@ class MyLibrary(APIView):
             except Profile.DoesNotExist:
                 profile = Profile.objects.create(user=request.user)
 
-            user_keywords_lower = set()
-            if profile.research_interests:
-                user_keywords_lower.update(
-                    k.strip().lower()
-                    for k in profile.research_interests.split(",")
-                    if k and k.strip()
-                )
-            if profile.additional_keywords:
-                user_keywords_lower.update(
-                    k.strip().lower()
-                    for k in profile.additional_keywords.split(",")
-                    if k and k.strip()
-                )
-
-            if not user_keywords_lower:
-                return Response([])
-
-            thirty_days_ago = timezone.now() - timedelta(days=30)
-            excluded_paper_ids = InterestingPaper.objects.filter(
-                user=user
-            ).values_list("paper_id", flat=True)
-
-            candidates = (
-                Paper.objects
-                .filter(created_at__gte=thirty_days_ago)
-                .exclude(id__in=excluded_paper_ids)
-                .only("id", "keywords")
-                .iterator(chunk_size=200)
-            )
-
-            matched_ids = []
-            for paper in candidates:
-                raw = paper.keywords
-                if not raw:
-                    continue
-                if isinstance(raw, list):
-                    paper_keywords = raw
-                elif isinstance(raw, str):
-                    try:
-                        paper_keywords = json.loads(raw)
-                    except json.JSONDecodeError:
-                        paper_keywords = [
-                            k.strip() for k in raw.split(",") if k and k.strip()
-                        ]
-                else:
-                    continue
-
-                paper_keywords_lower = {
-                    pk.lower() for pk in paper_keywords if isinstance(pk, str)
-                }
-                if user_keywords_lower & paper_keywords_lower:
-                    matched_ids.append(paper.id)
-                    if len(matched_ids) >= 20:
-                        break
-
+            matched_ids = recommend_paper_ids(user, profile)
             if not matched_ids:
                 return Response([])
 
-            papers_by_id = {
-                p.id: p
-                for p in Paper.objects.filter(id__in=matched_ids)
-                .select_related("journal", "conference")
-                .prefetch_related("tasks")
-            }
-            ordered_papers = [papers_by_id[pid] for pid in matched_ids if pid in papers_by_id]
-
+            ordered_papers = load_recommended_papers(matched_ids)
             serializer = PaperSerializer(ordered_papers, many=True)
             return Response(serializer.data)
 
@@ -1318,7 +1261,7 @@ class ResearchAssistant(APIView):
             )
 
         assistant_url = os.environ.get(
-            "RESEARCH_ASSISTANT_URL", "http://localhost:8090"
+            "RESEARCH_ASSISTANT_URL", "http://research-assistant:8001"
         )
         payload = {"query": query, "user_id": user_id, "system_prompt": system_prompt}
 
