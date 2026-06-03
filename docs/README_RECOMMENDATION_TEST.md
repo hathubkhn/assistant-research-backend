@@ -4,15 +4,11 @@ Tài liệu này hướng dẫn cách kiểm tra chức năng recommendation pap
 
 ## Tổng quan về chức năng Recommendation
 
-Hệ thống khuyến nghị paper (recommendation) hoạt động dựa trên các keywords (từ khóa) trong profile của người dùng và keywords của các paper. Cụ thể:
+Hệ thống khuyến nghị paper (recommendation) ưu tiên **semantic search** (Qdrant / embedding qua `research_assistant`), với **fallback keyword** như trước:
 
-1. Hệ thống trích xuất keywords từ 2 trường trong profile của user:
-   - `research_interests`: Lĩnh vực nghiên cứu quan tâm
-   - `additional_keywords`: Các từ khóa bổ sung
-
-2. Hệ thống so sánh các keywords này với keywords của các paper trong cơ sở dữ liệu.
-
-3. Các paper có keywords trùng với keywords của user sẽ được đề xuất cho user đó.
+1. Từ profile user (`research_interests`, `additional_keywords`) tạo câu truy vấn → `POST /search` trên research-assistant.
+2. Paper được xếp hạng theo độ tương đồng vector; chỉ giữ paper tạo trong **30 ngày**, chưa đánh dấu Interesting.
+3. Nếu semantic không có kết quả hoặc chưa đủ 8 paper: bổ sung bằng so khớp **keyword** profile ↔ `papers.keywords` (logic cũ).
 
 ## Dữ liệu đã được thêm vào
 
