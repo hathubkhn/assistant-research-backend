@@ -49,6 +49,7 @@ from .views.research_assistant_chat import (
     ChatSessionListView,
     ChatSessionMessagesView,
     ResearchAssistantChatQueryView,
+    ResearchAssistantHealthView,
 )
 from .views.venue_mapping import MapPaperVenueView
 
@@ -112,6 +113,11 @@ urlpatterns = [
     path('venues/counts/', VenuesCounts.as_view(), name='api-venues-counts'),
     path('my-library/', MyLibrary.as_view(), name='api-my-library'),
     # path('research-assistant/query/', ResearchAssistant.as_view(), name='api-research-assistant-query'),
+    path(
+        'research-assistant/health/',
+        ResearchAssistantHealthView.as_view(),
+        name='api-research-assistant-health',
+    ),
     path(
         'research-assistant/chat/query/',
         ResearchAssistantChatQueryView.as_view(),

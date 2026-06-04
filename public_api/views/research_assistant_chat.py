@@ -7,7 +7,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.authentication import TokenAuthentication
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -189,3 +189,26 @@ class ResearchAssistantChatQueryView(APIView):
                 "assistant_message": _serialize_message(assistant_msg),
             }
         )
+
+
+class ResearchAssistantHealthView(APIView):
+    """Proxy health check so the browser hits Django (public DNS), not Docker-internal RA host."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        assistant_url = os.environ.get(
+            "RESEARCH_ASSISTANT_URL", "http://research-assistant:8001"
+        ).rstrip("/")
+        try:
+            response = requests.get(f"{assistant_url}/health", timeout=5)
+            try:
+                body = response.json()
+            except ValueError:
+                body = {"status": "unknown", "raw": response.text[:200]}
+            return Response(body, status=response.status_code)
+        except requests.RequestException as exc:
+            return Response(
+                {"status": "unavailable", "vector_db": "unavailable", "detail": str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
