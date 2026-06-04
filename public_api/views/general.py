@@ -1245,26 +1245,28 @@ class UploadPaper(APIView):
         return Response(response_data, status=status.HTTP_201_CREATED)
 
 
-class ResearchAssistant(APIView):
-    permission_classes = [AllowAny]
-    authentication_classes = []
-
-    def post(self, request):
-        data = request.data
-        query = data.get("query", "")
-        user_id = str(request.user.id) if request.user.is_authenticated else None
-        system_prompt = data.get("system_prompt", None)
-
-        if not query:
-            return Response(
-                {"error": "Query is required"}, status=status.HTTP_400_BAD_REQUEST
-            )
-
-        assistant_url = os.environ.get(
-            "RESEARCH_ASSISTANT_URL", "http://research-assistant:8001"
-        )
-        payload = {"query": query, "user_id": user_id, "system_prompt": system_prompt}
-
-        response = requests.post(f"{assistant_url}/query", json=payload, timeout=30)
-        response.raise_for_status()
-        return Response(response.json())
+# Legacy public proxy (AllowAny, no chat history). Replaced by research_assistant_chat.py:
+# POST /api/research-assistant/chat/query/ (IsAuthenticated + session persistence).
+#
+# class ResearchAssistant(APIView):
+#     permission_classes = [AllowAny]
+#     authentication_classes = []
+#
+#     def post(self, request):
+#         data = request.data
+#         query = data.get("query", "")
+#         system_prompt = data.get("system_prompt", None)
+#
+#         if not query:
+#             return Response(
+#                 {"error": "Query is required"}, status=status.HTTP_400_BAD_REQUEST
+#             )
+#
+#         assistant_url = os.environ.get(
+#             "RESEARCH_ASSISTANT_URL", "http://research-assistant:8001"
+#         )
+#         payload = {"query": query, "system_prompt": system_prompt}
+#
+#         response = requests.post(f"{assistant_url}/query", json=payload, timeout=30)
+#         response.raise_for_status()
+#         return Response(response.json())

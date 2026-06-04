@@ -43,7 +43,12 @@ from .views.general import (
     HomeStats,
     MyLibrary,
     UploadPaper,
-    ResearchAssistant,
+    # ResearchAssistant,  # legacy AllowAny proxy — use chat API below
+)
+from .views.research_assistant_chat import (
+    ChatSessionListView,
+    ChatSessionMessagesView,
+    ResearchAssistantChatQueryView,
 )
 from .views.venue_mapping import MapPaperVenueView
 
@@ -106,5 +111,20 @@ urlpatterns = [
     
     path('venues/counts/', VenuesCounts.as_view(), name='api-venues-counts'),
     path('my-library/', MyLibrary.as_view(), name='api-my-library'),
-    path('research-assistant/query/', ResearchAssistant.as_view(), name='api-research-assistant-query'),
+    # path('research-assistant/query/', ResearchAssistant.as_view(), name='api-research-assistant-query'),
+    path(
+        'research-assistant/chat/query/',
+        ResearchAssistantChatQueryView.as_view(),
+        name='api-research-assistant-chat-query',
+    ),
+    path(
+        'research-assistant/chat/sessions/',
+        ChatSessionListView.as_view(),
+        name='api-research-assistant-chat-sessions',
+    ),
+    path(
+        'research-assistant/chat/sessions/<uuid:session_id>/messages/',
+        ChatSessionMessagesView.as_view(),
+        name='api-research-assistant-chat-messages',
+    ),
 ]
