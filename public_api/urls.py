@@ -19,8 +19,8 @@ from .views.dataset import (
     MarkDatasetInteresting,
     UnmarkDatasetInteresting,
 )
-from .views.journal import JournalsList, JournalDetailView
-from .views.conference import ConferencesList, ConferenceDetail
+from .views.journal import JournalsList, JournalDetailView, JournalPapersView
+from .views.conference import ConferencesList, ConferenceDetail, ConferencePapersView
 from .views.keywords import ListKeywordsView, TasksList
 from .views.general import (
     SearchView,
@@ -47,6 +47,7 @@ from .views.general import (
 )
 from .views.research_assistant_chat import (
     ChatSessionListView,
+    ChatSessionDetailView,
     ChatSessionMessagesView,
     ResearchAssistantChatQueryView,
     ResearchAssistantHealthView,
@@ -82,9 +83,19 @@ urlpatterns = [
     
     path("journals/", JournalsList.as_view(), name="api-journals-list"),
     path("journals/<uuid:journal_id>/", JournalDetailView.as_view(), name="api-journal-detail"),
+    path(
+        "journals/<uuid:journal_id>/papers/",
+        JournalPapersView.as_view(),
+        name="api-journal-papers",
+    ),
     
     path("conferences/", ConferencesList.as_view(), name="api-conferences-list"),
     path("conferences/<uuid:conference_id>/", ConferenceDetail.as_view(), name="api-conference-detail"),
+    path(
+        "conferences/<uuid:conference_id>/papers/",
+        ConferencePapersView.as_view(),
+        name="api-conference-papers",
+    ),
     
     path("keywords/", ListKeywordsView.as_view(), name="api-keywords-list"),
     path("tasks/", TasksList.as_view(), name="public-tasks-list"),
@@ -127,6 +138,11 @@ urlpatterns = [
         'research-assistant/chat/sessions/',
         ChatSessionListView.as_view(),
         name='api-research-assistant-chat-sessions',
+    ),
+    path(
+        'research-assistant/chat/sessions/<uuid:session_id>/',
+        ChatSessionDetailView.as_view(),
+        name='api-research-assistant-chat-session-detail',
     ),
     path(
         'research-assistant/chat/sessions/<uuid:session_id>/messages/',

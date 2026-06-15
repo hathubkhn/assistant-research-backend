@@ -19,7 +19,8 @@ from django.db.models import Count
 from django.utils import timezone
 
 from public_api.models import Conference, Journal, Paper, PaperVenueMapping
-from public_api.services.venue_mapping import map_paper_record
+from public_api.services.venue_apply import materialize_no_match_db_mappings
+from public_api.services.venue_mapping import map_paper_record, venue_kind_from_classification
 
 MAPPING_UPDATE_FIELDS = [
     "lookup_key",
@@ -200,6 +201,37 @@ class Command(BaseCommand):
         )
         export_results.add_argument("--limit", type=int, default=0, help="0 = no limit")
 
+        export_no_match = sub.add_parser(
+            "export-no-match-db",
+            help="Export no_match_db papers + unique venues to create (CSV review)",
+        )
+        export_no_match.add_argument(
+            "-o",
+            "--papers-output",
+            default="data/no_match_db_papers.csv",
+            help="Per-paper CSV (paper_id, venue_from_api, …)",
+        )
+        export_no_match.add_argument(
+            "--venues-output",
+            default="data/no_match_db_venues.csv",
+            help="Unique venues CSV (one row per journal/conference to create)",
+        )
+        export_no_match.add_argument("--limit", type=int, default=0, help="0 = no limit")
+
+        materialize = sub.add_parser(
+            "materialize-no-match-db",
+            help="Create Journal/Conference for no_match_db rows and link papers",
+        )
+        materialize.add_argument("--dry-run", action="store_true")
+        materialize.add_argument("--update-doi", action="store_true")
+        materialize.add_argument("--bulk-size", type=int, default=500)
+        materialize.add_argument(
+            "--skip-if-paper-has-venue",
+            action="store_true",
+            help="Skip papers that already have journal_id or conference_id",
+        )
+        materialize.add_argument("--limit", type=int, default=0, help="0 = all rows")
+
     def handle(self, *args, **options):
         action = options["action"]
         if action == "export":
@@ -214,6 +246,10 @@ class Command(BaseCommand):
             self._apply_db(options)
         elif action == "export-results":
             self._export_results(options)
+        elif action == "export-no-match-db":
+            self._export_no_match_db(options)
+        elif action == "materialize-no-match-db":
+            self._materialize_no_match_db(options)
 
     def _paper_queryset(self, options):
         qs = Paper.objects.all().order_by("id")
@@ -600,3 +636,141 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f"Exported {count} rows → {out_path}"))
         if status_filter:
             self.stdout.write(f"Filter status: {status_filter}")
+
+    def _export_no_match_db(self, options):
+        qs = (
+            PaperVenueMapping.objects.filter(status=PaperVenueMapping.Status.NO_MATCH_DB)
+            .select_related("paper")
+            .order_by("paper_id")
+        )
+        limit = options["limit"]
+        if limit > 0:
+            qs = qs[:limit]
+
+        papers_path = options["papers_output"]
+        venues_path = options["venues_output"]
+        for path in (papers_path, venues_path):
+            os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
+
+        paper_fields = [
+            "paper_id",
+            "title",
+            "input_doi",
+            "resolved_doi",
+            "classification",
+            "venue_from_api",
+            "db_venue_kind",
+            "year",
+            "match_score",
+            "no_match_db_payload",
+            "notes",
+        ]
+        venue_fields = [
+            "venue_key",
+            "db_venue_kind",
+            "venue_name",
+            "classification",
+            "publisher",
+            "paper_count",
+            "sample_paper_id",
+            "existing_venue_id",
+        ]
+
+        venue_agg: dict[tuple[str, str], dict] = {}
+        paper_count = 0
+
+        with open(papers_path, "w", newline="", encoding="utf-8") as pf:
+            writer = csv.DictWriter(pf, fieldnames=paper_fields)
+            writer.writeheader()
+            for m in qs.iterator(chunk_size=2000):
+                venue_name = (m.venue_from_api or "").strip()
+                kind = (
+                    (m.db_venue_kind or "").strip()
+                    or venue_kind_from_classification(m.classification or "")
+                    or "conference"
+                )
+                if kind not in ("journal", "conference"):
+                    kind = "conference"
+
+                writer.writerow({
+                    "paper_id": str(m.paper_id),
+                    "title": m.paper.title if m.paper_id else "",
+                    "input_doi": m.input_doi,
+                    "resolved_doi": m.resolved_doi,
+                    "classification": m.classification,
+                    "venue_from_api": venue_name,
+                    "db_venue_kind": kind,
+                    "year": m.year,
+                    "match_score": m.match_score if m.match_score is not None else "",
+                    "no_match_db_payload": m.no_match_db_payload,
+                    "notes": m.notes,
+                })
+                paper_count += 1
+
+                if not venue_name:
+                    continue
+
+                key = (kind, venue_name.casefold())
+                if key not in venue_agg:
+                    existing_id = ""
+                    if kind == "journal":
+                        existing = Journal.objects.filter(name=venue_name).only("id").first()
+                    else:
+                        existing = Conference.objects.filter(name=venue_name).only("id").first()
+                    if existing:
+                        existing_id = str(existing.id)
+
+                    venue_agg[key] = {
+                        "venue_key": f"{kind}|{venue_name}",
+                        "db_venue_kind": kind,
+                        "venue_name": venue_name,
+                        "classification": m.classification,
+                        "publisher": "",
+                        "paper_count": 0,
+                        "sample_paper_id": str(m.paper_id),
+                        "existing_venue_id": existing_id,
+                    }
+                venue_agg[key]["paper_count"] += 1
+
+        with open(venues_path, "w", newline="", encoding="utf-8") as vf:
+            writer = csv.DictWriter(vf, fieldnames=venue_fields)
+            writer.writeheader()
+            for row in sorted(venue_agg.values(), key=lambda r: (-r["paper_count"], r["venue_name"])):
+                writer.writerow({k: row.get(k, "") for k in venue_fields})
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Exported {paper_count} no_match_db papers → {papers_path}\n"
+                f"Exported {len(venue_agg)} unique venues → {venues_path}"
+            )
+        )
+        self.stdout.write(
+            "Review venues CSV, then run:\n"
+            "  python manage.py map_paper_venues materialize-no-match-db --dry-run\n"
+            "  python manage.py map_paper_venues materialize-no-match-db [--update-doi]"
+        )
+
+    def _materialize_no_match_db(self, options):
+        stats = materialize_no_match_db_mappings(
+            dry_run=options["dry_run"],
+            update_doi=options["update_doi"],
+            bulk_size=options["bulk_size"],
+            skip_if_paper_has_venue=options["skip_if_paper_has_venue"],
+            limit=options["limit"],
+        )
+        verb = "Dry-run" if options["dry_run"] else "Done"
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"{verb}: mappings_seen={stats['mappings_seen']} "
+                f"venues_created={stats['venues_created']} venues_reused={stats['venues_reused']} "
+                f"papers_linked={stats['papers_linked']} "
+                f"skipped_has_venue={stats['skipped_has_venue']} "
+                f"skipped_no_venue_name={stats['skipped_no_venue_name']} "
+                f"errors={stats['errors']}"
+            )
+        )
+        if not options["dry_run"]:
+            self.stdout.write(
+                "New venues use rank='' / quartile='' (display: Not ranked). "
+                "Re-run map_paper_venues run --resume later if you want fuzzy re-match."
+            )
