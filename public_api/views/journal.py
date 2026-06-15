@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ..models import Journal
-from ..venue_papers import serialize_venue_papers
+from ..venue_papers import paginate_venue_papers
 
 
 class JournalsList(APIView):
@@ -90,7 +90,6 @@ class JournalDetailView(APIView):
     def get(self, request, journal_id):
         journal = get_object_or_404(Journal, id=journal_id)
         papers_count = journal.papers.count()
-        paper_items = serialize_venue_papers(journal.papers.all())
 
         journal_data = {
             "id": journal.id,
@@ -101,7 +100,17 @@ class JournalDetailView(APIView):
             "publisher": journal.publisher,
             "url": journal.url,
             "papersCount": papers_count,
-            "papers": paper_items,
             "created_at": journal.created_at,
         }
         return Response(journal_data, status=status.HTTP_200_OK)
+
+
+class JournalPapersView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, journal_id):
+        journal = get_object_or_404(Journal, id=journal_id)
+        page = int(request.query_params.get("page", 1))
+        page_size = int(request.query_params.get("pageSize", 20))
+        data = paginate_venue_papers(journal.papers.all(), page, page_size)
+        return Response(data, status=status.HTTP_200_OK)

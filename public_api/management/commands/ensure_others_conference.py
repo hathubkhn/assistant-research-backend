@@ -7,10 +7,11 @@ Usage:
 """
 from django.core.management.base import BaseCommand
 
+from public_api.conference_ranks import DISPLAY_UNRANKED
 from public_api.models import Conference
 
 OTHERS_NAME = "Others"
-OTHERS_RANK = "not rank"
+OTHERS_RANK = ""  # unranked; API displays as DISPLAY_UNRANKED
 
 
 class Command(BaseCommand):

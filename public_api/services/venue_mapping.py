@@ -484,6 +484,19 @@ def build_no_match_db_payload(candidate: dict, preferred_kind: str | None) -> st
     )
 
 
+def parse_no_match_db_payload(payload: str) -> dict[str, str]:
+    """Parse payload produced by build_no_match_db_payload."""
+    result: dict[str, str] = {}
+    if not payload:
+        return result
+    for part in payload.split(" | "):
+        if "=" not in part:
+            continue
+        key, value = part.split("=", 1)
+        result[key.strip()] = value.strip()
+    return result
+
+
 def fuzzy_match_venue_name(
     venue_name: str,
     journals: list[tuple[str, str]],

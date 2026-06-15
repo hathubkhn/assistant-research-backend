@@ -25,6 +25,14 @@ def _truncate_title(text: str) -> str:
     return cleaned[: SESSION_TITLE_MAX_LEN - 3].rstrip() + "..."
 
 
+def _normalize_session_title(text: str) -> str:
+    cleaned = " ".join((text or "").split())
+    max_len = ChatSession._meta.get_field("title").max_length
+    if len(cleaned) <= max_len:
+        return cleaned or "New chat"
+    return cleaned[: max_len - 3].rstrip() + "..."
+
+
 def _serialize_message(msg: ChatMessage) -> Dict[str, Any]:
     return {
         "id": str(msg.id),
@@ -96,6 +104,31 @@ class ChatSessionListView(APIView):
             _serialize_session(s, message_count=s.message_count) for s in sessions
         ]
         return Response({"sessions": data})
+
+
+class ChatSessionDetailView(APIView):
+    """Rename or delete a chat session (messages cascade on delete)."""
+
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TokenAuthentication]
+
+    def patch(self, request, session_id):
+        session = _get_user_session(session_id, request.user)
+        raw_title = (request.data.get("title") or "").strip()
+        if not raw_title:
+            return Response(
+                {"error": "Title is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        session.title = _normalize_session_title(raw_title)
+        session.save(update_fields=["title", "updated_at"])
+        message_count = session.messages.count()
+        return Response(_serialize_session(session, message_count=message_count))
+
+    def delete(self, request, session_id):
+        session = _get_user_session(session_id, request.user)
+        session.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class ChatSessionMessagesView(APIView):

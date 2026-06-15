@@ -7,8 +7,10 @@ from django.shortcuts import get_object_or_404
 from django.db.models import Case, IntegerField, Q, Value, When
 from django.core.paginator import Paginator
 
+from ..conference_ranks import unranked_rank_q
 from ..models import Conference
 from ..serializers import ConferenceListSerializer, ConferenceDetailSerializer
+from ..venue_papers import paginate_venue_papers
 
 
 class ConferencesList(APIView):
@@ -38,8 +40,8 @@ class ConferencesList(APIView):
             )
 
         if rank:
-            if rank.lower() == "null":
-                conferences = conferences.filter(Q(rank__isnull=True) | Q(rank=""))
+            if rank.lower() in ("null", "not ranked", "unranked"):
+                conferences = conferences.filter(unranked_rank_q())
             else:
                 conferences = conferences.filter(rank=rank)
 
@@ -75,3 +77,14 @@ class ConferenceDetail(APIView):
         serializer = ConferenceDetailSerializer(conference)
         result = serializer.data
         return Response(result, status=status.HTTP_200_OK)
+
+
+class ConferencePapersView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, conference_id):
+        conference = get_object_or_404(Conference, id=conference_id)
+        page = int(request.query_params.get("page", 1))
+        page_size = int(request.query_params.get("pageSize", 20))
+        data = paginate_venue_papers(conference.papers.all(), page, page_size)
+        return Response(data, status=status.HTTP_200_OK)

@@ -13,7 +13,6 @@ from .models import (
     Publication,
     Task,
 )
-from .venue_papers import serialize_venue_papers
 
 
 class ProfileSerializer(serializers.ModelSerializer):
@@ -464,6 +463,8 @@ class InterestingDatasetsSerializer(serializers.ModelSerializer):
 
 class ConferenceListSerializer(serializers.ModelSerializer):
     papersCount = serializers.SerializerMethodField()
+    rank = serializers.SerializerMethodField()
+
     class Meta:
         model = Conference
         fields = [
@@ -476,13 +477,19 @@ class ConferenceListSerializer(serializers.ModelSerializer):
             "papersCount"
         ]
 
+    def get_rank(self, obj):
+        from .conference_ranks import display_conference_rank
+
+        return display_conference_rank(obj.rank)
+
     def get_papersCount(self, obj):
         return obj.papers.count()
     
 
 class ConferenceDetailSerializer(serializers.ModelSerializer):
     papersCount = serializers.SerializerMethodField()
-    papers = serializers.SerializerMethodField()
+    rank = serializers.SerializerMethodField()
+
     class Meta:
         model = Conference
         fields = [
@@ -493,13 +500,14 @@ class ConferenceDetailSerializer(serializers.ModelSerializer):
             "location",
             "url",
             "papersCount",
-            "papers",
             "created_at"
         ]
 
+    def get_rank(self, obj):
+        from .conference_ranks import display_conference_rank
+
+        return display_conference_rank(obj.rank)
+
     def get_papersCount(self, obj):
         return obj.papers.count()
-
-    def get_papers(self, obj):
-        return serialize_venue_papers(obj.papers.all())
         
