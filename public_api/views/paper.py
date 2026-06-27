@@ -70,7 +70,13 @@ class PapersList(APIView):
 
         page = int(request.query_params.get("page", 1))
         page_size = int(request.query_params.get("pageSize", 20))
-        task_ids = request.query_params.get("taskIds", [])
+        task_ids_raw = request.query_params.get("taskIds", "")
+        if isinstance(task_ids_raw, str):
+            task_ids = [tid.strip() for tid in task_ids_raw.split(",") if tid.strip()]
+        elif isinstance(task_ids_raw, list):
+            task_ids = [str(tid).strip() for tid in task_ids_raw if str(tid).strip()]
+        else:
+            task_ids = []
 
         if year:
             queryset = queryset.filter(publication_date__year=int(year))
@@ -91,7 +97,7 @@ class PapersList(APIView):
             queryset = queryset.filter(conference_id__isnull=False)
 
         if task_ids:
-            queryset = queryset.filter(task_id__in=task_ids)
+            queryset = queryset.filter(tasks__id__in=task_ids).distinct()
 
         if start_date:
             start_date = datetime.fromisoformat(start_date.replace("Z", "+00:00"))

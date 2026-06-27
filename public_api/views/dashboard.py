@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -12,6 +12,75 @@ from ..models import Paper, Dataset, Task
 from ..serializers import PaperSerializer, TaskSerializer
 
 logger = logging.getLogger(__name__)
+
+
+def _inclusive_end_date(end_exclusive: date) -> date:
+    return end_exclusive - timedelta(days=1)
+
+
+def _bucket_key(value, period: str):
+    """Normalize Trunc* values and bucket dates to a comparable lookup key."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        d = value.date()
+    else:
+        d = value
+    if period == "daily":
+        return d
+    if period == "weekly":
+        return d - timedelta(days=d.weekday())
+    if period == "monthly":
+        return (d.year, d.month)
+    if period == "yearly":
+        return d.year
+    return d
+
+
+def _build_time_range(start: date, end_exclusive: date, period: str) -> list:
+    inclusive_end = _inclusive_end_date(end_exclusive)
+    if period == "daily":
+        return [start + timedelta(days=x) for x in range((end_exclusive - start).days + 1)]
+    if period == "weekly":
+        cursor = start - timedelta(days=start.weekday())
+        buckets = []
+        while cursor <= inclusive_end:
+            buckets.append(cursor)
+            cursor += timedelta(weeks=1)
+        return buckets
+    if period == "monthly":
+        y, m = start.year, start.month
+        buckets = []
+        while (y, m) <= (inclusive_end.year, inclusive_end.month):
+            buckets.append(date(y, m, 1))
+            m += 1
+            if m > 12:
+                m = 1
+                y += 1
+        return buckets
+    if period == "yearly":
+        return [date(y, 1, 1) for y in range(start.year, inclusive_end.year + 1)]
+    return []
+
+
+def _period_bounds(bucket, period: str, inclusive_end: date) -> tuple[str, str]:
+    if period == "daily":
+        return str(bucket), str(bucket)
+    if period == "weekly":
+        week_end = min(bucket + timedelta(days=6), inclusive_end)
+        return str(bucket), str(week_end)
+    if period == "monthly":
+        if bucket.month == 12:
+            next_month = date(bucket.year + 1, 1, 1)
+        else:
+            next_month = date(bucket.year, bucket.month + 1, 1)
+        month_end = min(next_month - timedelta(days=1), inclusive_end)
+        return str(bucket), str(month_end)
+    if period == "yearly":
+        year_end = min(date(bucket.year, 12, 31), inclusive_end)
+        return str(bucket), str(year_end)
+    return str(bucket), str(bucket)
+
 
 class Dashboard(APIView):
     permission_classes = [AllowAny]
@@ -32,43 +101,44 @@ class Dashboard(APIView):
             
             start = datetime.strptime(start_date, '%Y-%m-%d').date()
             end = end_date.date()
-            annotation_func, order_by_field = None, None
-            if period == 'daily':
-                annotation_func = TruncDate('created_at')
-                order_by_field = 'date'
-                time_range = [(start + timedelta(days=x)) for x in range((end - start).days + 1)]
-            elif period == 'weekly':
-                annotation_func = TruncWeek('created_at')
-                order_by_field = 'week'
-                time_range = [(start + timedelta(weeks=x)) for x in range((end - start).weeks + 1)]
-            elif period == 'monthly':
-                annotation_func = TruncMonth('created_at')
-                order_by_field = 'month'
-                time_range = [(start + timedelta(months=x)) for x in range((end - start).months + 1)]
-            elif period == 'yearly':
-                annotation_func = TruncYear('created_at')
-                order_by_field = 'year'
-                time_range = [(start + timedelta(years=x)) for x in range((end - start).years + 1)]
-            else:
+            inclusive_end = _inclusive_end_date(end)
+
+            period_config = {
+                'daily': TruncDate('created_at'),
+                'weekly': TruncWeek('created_at'),
+                'monthly': TruncMonth('created_at'),
+                'yearly': TruncYear('created_at'),
+            }
+            if period not in period_config:
                 return Response({"error": "Invalid period"}, status=status.HTTP_400_BAD_REQUEST)
-            
+
+            annotation_func = period_config[period]
+            time_range = _build_time_range(start, end, period)
+
             papers_per_period = Paper.objects.filter(
-                created_at__gte=start_date, 
+                created_at__gte=start_date,
                 created_at__lte=end_date
             ).annotate(
                 date=annotation_func
             ).values('date').annotate(
                 count=Count('id')
-            ).order_by(order_by_field)
+            ).order_by('date')
+
+            counts_by_bucket = {
+                _bucket_key(row["date"], period): row["count"]
+                for row in papers_per_period
+            }
+
             paper_count_details = []
-            for date in time_range:
-                count = next((p["count"] for p in papers_per_period if p["date"] == date), 0)
+            for bucket in time_range:
+                count = counts_by_bucket.get(_bucket_key(bucket, period), 0)
+                period_start, period_end = _period_bounds(bucket, period, inclusive_end)
                 paper_count_details.append({
                     "period": {
-                        "start": str(date),
-                        "end": str(date)
+                        "start": period_start,
+                        "end": period_end,
                     },
-                    "count": count
+                    "count": count,
                 })
             
             response_data.update({
