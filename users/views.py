@@ -420,7 +420,7 @@ class MicrosoftAuthCallbackView(APIView):
             
             # Exchange code for token with Microsoft
             import requests
-            token_url = 'https://login.microsoftonline.com/common/oauth2/v2.0/token'
+            token_url = settings.MICROSOFT_OAUTH_TOKEN_URL
             token_data = {
                 'client_id': client_id,
                 'client_secret': client_secret,

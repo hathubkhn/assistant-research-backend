@@ -935,7 +935,7 @@ class MicrosoftCallback(APIView):
         client_id = settings.SOCIAL_AUTH_MICROSOFT_OAUTH2_KEY
         client_secret = settings.SOCIAL_AUTH_MICROSOFT_OAUTH2_SECRET
 
-        token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+        token_url = settings.MICROSOFT_OAUTH_TOKEN_URL
         token_data = {
             "client_id": client_id,
             "client_secret": client_secret,
@@ -1001,9 +1001,7 @@ class LoginView(APIView):
 
         google_login = f"{google_login_url}?client_id={client_id}&redirect_uri={redirect_uri}&response_type=code&scope=email%20profile&access_type=offline&prompt=consent"
 
-        microsoft_login = (
-            "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
-        )
+        microsoft_login = settings.MICROSOFT_OAUTH_AUTHORIZE_URL
 
         return Response(
             {

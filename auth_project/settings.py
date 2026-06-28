@@ -238,7 +238,7 @@ SOCIALACCOUNT_PROVIDERS = {
             'client_id': env.str('MICROSOFT_CLIENT_ID', default='your-microsoft-client-id'),
             'secret': env.str('MICROSOFT_CLIENT_SECRET', default='your-microsoft-client-secret'),
             'key': '',
-            'tenant': 'common',
+            'tenant': env.str('MICROSOFT_TENANT_ID', default='common'),
         },
         'SCOPE': [
             'profile',
@@ -261,6 +261,13 @@ SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = env.str('GOOGLE_CLIENT_SECRET', default='your
 
 SOCIAL_AUTH_MICROSOFT_OAUTH2_KEY = env.str('MICROSOFT_CLIENT_ID', default='your-microsoft-key')
 SOCIAL_AUTH_MICROSOFT_OAUTH2_SECRET = env.str('MICROSOFT_CLIENT_SECRET', default='your-microsoft-secret')
+MICROSOFT_TENANT_ID = env.str('MICROSOFT_TENANT_ID', default='common').strip() or 'common'
+MICROSOFT_OAUTH_AUTHORIZE_URL = (
+    f'https://login.microsoftonline.com/{MICROSOFT_TENANT_ID}/oauth2/v2.0/authorize'
+)
+MICROSOFT_OAUTH_TOKEN_URL = (
+    f'https://login.microsoftonline.com/{MICROSOFT_TENANT_ID}/oauth2/v2.0/token'
+)
 
 LOGIN_URL = '/api/login/'
 LOGIN_REDIRECT_URL = '/api/signup/'
