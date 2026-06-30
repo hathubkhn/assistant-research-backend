@@ -14,7 +14,9 @@ from ..models import Paper, Task
 logger = logging.getLogger(__name__)
 from ..serializers import TaskListParamsSerializer, TaskSerializer
 
-
+# LEGACY/UNUSED BLOCK: keywords/tasks routes are disabled in urls.py.
+"""
+# LEGACY/UNUSED: /api/keywords route is commented in urls.py.
 class ListKeywordsView(APIView):
     permission_classes = [AllowAny]
 
@@ -47,6 +49,7 @@ class ListKeywordsView(APIView):
         return Response(output, status=status.HTTP_200_OK)
 
 
+# LEGACY/UNUSED: /api/tasks route is commented in urls.py.
 class TasksList(APIView):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
@@ -90,3 +93,4 @@ class TasksList(APIView):
                 "INTERNAL_SERVER_ERROR",
                 "An unexpected error occurred while processing the request.",
             )
+"""

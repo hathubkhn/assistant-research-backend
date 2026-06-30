@@ -29,6 +29,9 @@ class PaperDetailView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
+# LEGACY/UNUSED BLOCK: by-slug route is disabled in urls.py.
+"""
+# LEGACY/UNUSED: /api/papers/by-slug/<slug>/ route is commented in urls.py.
 class PaperBySlugView(APIView):
     permission_classes = [AllowAny]
 
@@ -43,6 +46,7 @@ class PaperBySlugView(APIView):
         serializer = PaperDetailSerializer(paper, context={"request": request})
         response_data = serializer.data
         return Response(response_data)
+"""
 
 
 class PapersList(APIView):
