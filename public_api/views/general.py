@@ -1110,25 +1110,33 @@ class MyLibrary(APIView):
                 .prefetch_related("paper__authors")
                 .order_by("-created_at")
             )
-            serializer = LibraryItemSerializer(interesting, many=True)
-            return Response(serializer.data)
-
-        elif section == "downloaded":
-            downloaded = (
-                DownloadedPaper.objects.filter(user=user)
-                .select_related("paper", "paper__journal", "paper__conference")
-                .prefetch_related("paper__authors")
-                .order_by("-created_at")
+            serializer = LibraryItemSerializer(
+                interesting, many=True, context={"request": request}
             )
-            serializer = LibraryItemSerializer(downloaded, many=True)
             return Response(serializer.data)
 
-        elif section == "datasets":
-            interesting = InterestingDataset.objects.filter(user=user)
-            dataset_ids = [item.dataset.id for item in interesting]
-            datasets = Dataset.objects.filter(id__in=dataset_ids)
-            serializer = DatasetSerializer(datasets, many=True)
-            return Response(serializer.data)
+        # LEGACY/UNUSED (dead path): FE does not call
+        # /api/my-library/?section=downloaded
+        # and uses /api/papers/downloaded/ instead.
+        # elif section == "downloaded":
+        #     downloaded = (
+        #         DownloadedPaper.objects.filter(user=user)
+        #         .select_related("paper", "paper__journal", "paper__conference")
+        #         .prefetch_related("paper__authors")
+        #         .order_by("-created_at")
+        #     )
+        #     serializer = LibraryItemSerializer(downloaded, many=True)
+        #     return Response(serializer.data)
+
+        # LEGACY/UNUSED (dead path): FE does not call
+        # /api/my-library/?section=datasets
+        # and uses /api/datasets/interesting/ instead.
+        # elif section == "datasets":
+        #     interesting = InterestingDataset.objects.filter(user=user)
+        #     dataset_ids = [item.dataset.id for item in interesting]
+        #     datasets = Dataset.objects.filter(id__in=dataset_ids)
+        #     serializer = DatasetSerializer(datasets, many=True)
+        #     return Response(serializer.data)
 
         elif section == "recommended":
             try:
@@ -1244,7 +1252,6 @@ class UploadPaper(APIView):
             "sourceCode": paper.github_url,
             "is_interesting": True,
             "is_downloaded": True,
-            "is_uploaded": True,
             "added_date": paper.created_at.isoformat(),
             "file_name": file.name,
             "file_size": file.size,
