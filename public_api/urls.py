@@ -1,11 +1,10 @@
 from django.urls import path
 
 # Import views from organized view modules
-from .views.dashboard import Dashboard, TaskPaperAnalytics
+from .views.dashboard import Dashboard
 from .views.paper import (
     PapersList,
     PaperDetailView,
-    PaperBySlugView,
     StarPaperView,
     UnstarPaperView,
     ListDownloadedPapers,
@@ -21,18 +20,11 @@ from .views.dataset import (
 )
 from .views.journal import JournalsList, JournalDetailView, JournalPapersView
 from .views.conference import ConferencesList, ConferenceDetail, ConferencePapersView
-from .views.keywords import ListKeywordsView, TasksList
 from .views.general import (
-    SearchView,
     GetProfile,
     UpdateProfile,
     PublicationsList,
     PublicationDetail,
-    Stats,
-    DashboardStats,
-    PapersStats,
-    KeywordsStats,
-    DatasetsStats,
     Register,
     TokenLogin,
     GoogleCallback,
@@ -56,13 +48,12 @@ from .views.venue_mapping import MapPaperVenueView
 
 urlpatterns = [
     path("dashboard/", Dashboard.as_view(), name="public-dashboard"),
-    path("task-paper-analytics/", TaskPaperAnalytics.as_view(), name="task-paper-analytics"),
-    
-    path('search/', SearchView.as_view(), name='api-search'),
+    # path("task-paper-analytics/", TaskPaperAnalytics.as_view(), name="task-paper-analytics"),  # legacy unused
+    # path('search/', SearchView.as_view(), name='api-search'),  # legacy unused
     
     path("papers/", PapersList.as_view(), name="public-papers-list"),
     path('papers/<uuid:paper_id>/', PaperDetailView.as_view(), name='api-paper-detail'),
-    path('papers/by-slug/<str:slug>/', PaperBySlugView.as_view(), name='api-paper-by-slug'),
+    # path('papers/by-slug/<str:slug>/', PaperBySlugView.as_view(), name='api-paper-by-slug'),  # legacy unused
     path('papers/downloaded/', ListDownloadedPapers.as_view(), name='api-downloaded-papers'),
     path('papers/mark-interesting/<uuid:paper_id>/', StarPaperView.as_view(), name='api-mark-paper-interesting'),
     path('papers/<uuid:paper_id>/unmark-interesting/', UnstarPaperView.as_view(), name='api-unmark-paper-interesting'),
@@ -97,8 +88,8 @@ urlpatterns = [
         name="api-conference-papers",
     ),
     
-    path("keywords/", ListKeywordsView.as_view(), name="api-keywords-list"),
-    path("tasks/", TasksList.as_view(), name="public-tasks-list"),
+    # path("keywords/", ListKeywordsView.as_view(), name="api-keywords-list"),  # legacy unused
+    # path("tasks/", TasksList.as_view(), name="public-tasks-list"),  # legacy unused
     
     path('profile/', GetProfile.as_view(), name='api-get-profile'),
     path('profile/update/', UpdateProfile.as_view(), name='api-update-profile'),
@@ -113,12 +104,12 @@ urlpatterns = [
     path('auth/microsoft/callback/', MicrosoftCallback.as_view(), name='api-microsoft-callback'),
     path('login/', LoginView.as_view(), name='api-login-view'),
     
-    # Statistics
-    path('stats/', Stats.as_view(), name='api-stats'),
-    path('stats/dashboard/', DashboardStats.as_view(), name='api-dashboard-stats'),
-    path('stats/papers/', PapersStats.as_view(), name='api-papers-stats'),
-    path('stats/keywords/', KeywordsStats.as_view(), name='api-keywords-stats'),
-    path('stats/datasets/', DatasetsStats.as_view(), name='api-datasets-stats'),
+    # Statistics (legacy unused; keep home stats only)
+    # path('stats/', Stats.as_view(), name='api-stats'),
+    # path('stats/dashboard/', DashboardStats.as_view(), name='api-dashboard-stats'),
+    # path('stats/papers/', PapersStats.as_view(), name='api-papers-stats'),
+    # path('stats/keywords/', KeywordsStats.as_view(), name='api-keywords-stats'),
+    # path('stats/datasets/', DatasetsStats.as_view(), name='api-datasets-stats'),
     path('stats/home/', HomeStats.as_view(), name='api-home-stats'),
     
     path('venues/counts/', VenuesCounts.as_view(), name='api-venues-counts'),

@@ -89,102 +89,103 @@ def _normalize_avatar_url(avatar_url):
     return normalized_path
 
 
-class SearchView(APIView):
-    permission_classes = [AllowAny]
-    authentication_classes = []
-
-    def get(self, request):
-        query = request.query_params.get("q", "")
-        if not query or len(query.strip()) < 2:
-            return Response(
-                {"error": "Search query must be at least 2 characters"}, status=400
-            )
-
-        page = int(request.query_params.get("page", 1))
-        page_size = int(request.query_params.get("pageSize", 10))
-
-        papers_query = Paper.objects.filter(
-            Q(title__icontains=query)
-            | Q(authors__icontains=query)
-            | Q(abstract__icontains=query)
-            | Q(keywords__icontains=query)
-        )
-
-        # Search datasets using Dataset model
-        datasets_query = Dataset.objects.filter(
-            Q(name__icontains=query) | Q(description__icontains=query)
-        )
-
-        # Count total items
-        total_papers = papers_query.count()
-        total_datasets = datasets_query.count()
-
-        # Apply pagination
-        start_index = (page - 1) * page_size
-        end_index = start_index + page_size
-        papers = papers_query[start_index:end_index]
-        datasets = datasets_query[start_index:end_index]
-
-        # Format results
-        results = {"papers": [], "datasets": []}
-
-        # Add papers to results
-        for paper in papers:
-            try:
-                authors = json.loads(paper.authors) if paper.authors else ["Unknown"]
-                if isinstance(authors, list) and len(authors) > 3:
-                    authors = authors[:3] + ["et al."]
-            except:
-                authors = ["Unknown"]
-
-            results["papers"].append(
-                {
-                    "id": str(paper.id),
-                    "title": paper.title,
-                    "authors": authors,
-                    "year": paper.year,
-                    "abstract": (
-                        paper.abstract[:200] + "..."
-                        if len(paper.abstract) > 200
-                        else paper.abstract
-                    ),
-                    "venue": paper.conference,
-                }
-            )
-
-        # Add datasets to results
-        for dataset in datasets:
-            results["datasets"].append(
-                {
-                    "id": str(dataset.id),
-                    "name": dataset.name,
-                    "description": (
-                        dataset.description[:200] + "..."
-                        if len(dataset.description) > 200
-                        else dataset.description
-                    ),
-                    "category": dataset.data_type or "Unknown",
-                    "papers_count": dataset.papers.count(),
-                }
-            )
-
-        # Create response with pagination metadata
-        response_data = {
-            "results": results,
-            "pagination": {
-                "page": page,
-                "pageSize": page_size,
-                "totalPapers": total_papers,
-                "totalDatasets": total_datasets,
-                "totalItems": total_papers + total_datasets,
-                "totalPages": max(
-                    (total_papers + page_size - 1) // page_size,
-                    (total_datasets + page_size - 1) // page_size,
-                ),
-            },
-        }
-
-        return Response(response_data)
+# LEGACY/UNUSED: FE search page removed and /api/search route is commented in urls.py.
+# class SearchView(APIView):
+#     permission_classes = [AllowAny]
+#     authentication_classes = []
+#
+#     def get(self, request):
+#         query = request.query_params.get("q", "")
+#         if not query or len(query.strip()) < 2:
+#             return Response(
+#                 {"error": "Search query must be at least 2 characters"}, status=400
+#             )
+#
+#         page = int(request.query_params.get("page", 1))
+#         page_size = int(request.query_params.get("pageSize", 10))
+#
+#         papers_query = Paper.objects.filter(
+#             Q(title__icontains=query)
+#             | Q(authors__icontains=query)
+#             | Q(abstract__icontains=query)
+#             | Q(keywords__icontains=query)
+#         )
+#
+#         # Search datasets using Dataset model
+#         datasets_query = Dataset.objects.filter(
+#             Q(name__icontains=query) | Q(description__icontains=query)
+#         )
+#
+#         # Count total items
+#         total_papers = papers_query.count()
+#         total_datasets = datasets_query.count()
+#
+#         # Apply pagination
+#         start_index = (page - 1) * page_size
+#         end_index = start_index + page_size
+#         papers = papers_query[start_index:end_index]
+#         datasets = datasets_query[start_index:end_index]
+#
+#         # Format results
+#         results = {"papers": [], "datasets": []}
+#
+#         # Add papers to results
+#         for paper in papers:
+#             try:
+#                 authors = json.loads(paper.authors) if paper.authors else ["Unknown"]
+#                 if isinstance(authors, list) and len(authors) > 3:
+#                     authors = authors[:3] + ["et al."]
+#             except:
+#                 authors = ["Unknown"]
+#
+#             results["papers"].append(
+#                 {
+#                     "id": str(paper.id),
+#                     "title": paper.title,
+#                     "authors": authors,
+#                     "year": paper.year,
+#                     "abstract": (
+#                         paper.abstract[:200] + "..."
+#                         if len(paper.abstract) > 200
+#                         else paper.abstract
+#                     ),
+#                     "venue": paper.conference,
+#                 }
+#             )
+#
+#         # Add datasets to results
+#         for dataset in datasets:
+#             results["datasets"].append(
+#                 {
+#                     "id": str(dataset.id),
+#                     "name": dataset.name,
+#                     "description": (
+#                         dataset.description[:200] + "..."
+#                         if len(dataset.description) > 200
+#                         else dataset.description
+#                     ),
+#                     "category": dataset.data_type or "Unknown",
+#                     "papers_count": dataset.papers.count(),
+#                 }
+#             )
+#
+#         # Create response with pagination metadata
+#         response_data = {
+#             "results": results,
+#             "pagination": {
+#                 "page": page,
+#                 "pageSize": page_size,
+#                 "totalPapers": total_papers,
+#                 "totalDatasets": total_datasets,
+#                 "totalItems": total_papers + total_datasets,
+#                 "totalPages": max(
+#                     (total_papers + page_size - 1) // page_size,
+#                     (total_datasets + page_size - 1) // page_size,
+#                 ),
+#             },
+#         }
+#
+#         return Response(response_data)
 
 
 class GetProfile(APIView):
@@ -288,6 +289,9 @@ class PublicationDetail(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+# LEGACY/UNUSED BLOCK: stats views are disabled (routes commented in urls.py).
+"""
+# LEGACY/UNUSED: /api/stats route is commented in urls.py.
 class Stats(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
@@ -321,6 +325,7 @@ class Stats(APIView):
         )
 
 
+# LEGACY/UNUSED: /api/stats/dashboard route is commented in urls.py.
 class DashboardStats(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
@@ -441,6 +446,7 @@ class DashboardStats(APIView):
         )
 
 
+# LEGACY/UNUSED: /api/stats/papers route is commented in urls.py.
 class PapersStats(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
@@ -506,6 +512,7 @@ class PapersStats(APIView):
         )
 
 
+# LEGACY/UNUSED: /api/stats/keywords route is commented in urls.py.
 class KeywordsStats(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
@@ -636,6 +643,7 @@ class KeywordsStats(APIView):
         return Response(result)
 
 
+# LEGACY/UNUSED: /api/stats/datasets route is commented in urls.py.
 class DatasetsStats(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
@@ -730,6 +738,7 @@ class DatasetsStats(APIView):
                 "periodData": period_data,
             }
         )
+"""
 
 
 class Register(APIView):

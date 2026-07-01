@@ -191,7 +191,9 @@ class Dashboard(APIView):
                 "INTERNAL_SERVER_ERROR",
                 "An unexpected error occurred while processing the request.",
             )
-
+# LEGACY/UNUSED BLOCK: task analytics route is disabled in urls.py.
+"""
+# LEGACY/UNUSED: /api/task-paper-analytics route is commented in urls.py.
 class TaskPaperAnalytics(APIView):
     permission_classes = [AllowAny]
 
@@ -320,3 +322,4 @@ class TaskPaperAnalytics(APIView):
                 "INTERNAL_SERVER_ERROR",
                 "An unexpected error occurred while processing the request.",
             )
+"""
