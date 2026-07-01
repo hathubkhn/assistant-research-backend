@@ -169,7 +169,9 @@ class ListDownloadedPapers(APIView):
             .prefetch_related("paper__authors")
             .order_by("-created_at")
         )
-        serializer = LibraryItemSerializer(downloaded_papers, many=True)
+        serializer = LibraryItemSerializer(
+            downloaded_papers, many=True, context={"request": request}
+        )
         return Response(data=serializer.data, status=status.HTTP_200_OK)
 
 

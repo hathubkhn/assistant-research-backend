@@ -15,6 +15,19 @@ from .models import (
 )
 
 
+def resolve_paper_download_url(paper, request=None):
+    """Prefer stored pdf_url; fall back to uploaded pdf_file with absolute URI."""
+    placeholder = "https://example.com"
+    if paper.pdf_url and paper.pdf_url != placeholder:
+        return paper.pdf_url
+    if paper.pdf_file:
+        url = paper.pdf_file.url
+        if request is not None:
+            return request.build_absolute_uri(url)
+        return url
+    return paper.pdf_url or ""
+
+
 class ProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
     email = serializers.EmailField(source="user.email", read_only=True)
@@ -149,7 +162,8 @@ class PaperListSerializer(serializers.ModelSerializer):
             return ["Unknown"]
 
     def get_downloadUrl(self, obj):
-        return obj.pdf_url
+        request = self.context.get("request")
+        return resolve_paper_download_url(obj, request)
 
     def get_year(self, obj):
         return obj.publication_date.year if obj.publication_date else None
@@ -206,7 +220,6 @@ class LibraryItemSerializer(serializers.Serializer):
     downloadUrl = serializers.SerializerMethodField()
     is_interesting = serializers.SerializerMethodField()
     is_downloaded = serializers.SerializerMethodField()
-    is_uploaded = serializers.SerializerMethodField()
     added_date = serializers.DateTimeField(source="created_at", read_only=True)
     doi = serializers.CharField(source="paper.doi", read_only=True)
     bibtex = serializers.CharField(source="paper.bibtex", read_only=True)
@@ -223,7 +236,6 @@ class LibraryItemSerializer(serializers.Serializer):
             "downloadUrl",
             "is_interesting",
             "is_downloaded",
-            "is_uploaded",
             "added_date",
             "doi",
             "bibtex",
@@ -245,16 +257,14 @@ class LibraryItemSerializer(serializers.Serializer):
         return obj.paper.keywords or []
 
     def get_downloadUrl(self, obj):
-        return obj.paper.pdf_url
+        request = self.context.get("request")
+        return resolve_paper_download_url(obj.paper, request)
 
     def get_is_interesting(self, obj):
         return obj.paper.interested_users.filter(user=obj.user).exists()
 
     def get_is_downloaded(self, obj):
         return hasattr(obj, "paper") and obj.paper.downloaded_users.filter(user=obj.user).exists()
-
-    def get_is_uploaded(self, obj):
-        return bool(obj.paper.pdf_file)
 
 
 class DatasetListSerializer(serializers.ModelSerializer):
@@ -341,7 +351,6 @@ class PaperDetailSerializer(PaperListSerializer):
     conferenceAbbreviation = serializers.SerializerMethodField()
     is_interesting = serializers.SerializerMethodField()
     is_downloaded = serializers.SerializerMethodField()
-    is_uploaded = serializers.SerializerMethodField()
 
     class Meta:
         model = Paper
@@ -369,7 +378,6 @@ class PaperDetailSerializer(PaperListSerializer):
             "datasets",
             "is_interesting",
             "is_downloaded",
-            "is_uploaded",
         ]
 
     def get_citationsByYear(self, obj):
@@ -430,9 +438,6 @@ class PaperDetailSerializer(PaperListSerializer):
         if not user:
             return False
         return obj.downloaded_users.filter(user=user).exists()
-
-    def get_is_uploaded(self, obj):
-        return bool(obj.pdf_file)
 
 
 class TaskSerializer(serializers.ModelSerializer):
